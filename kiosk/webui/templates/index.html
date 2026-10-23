@@ -357,7 +357,7 @@
         <div class="form-group">
           <label for="dashboard_url">Dashboard / Start URL</label>
           <input type="text" id="dashboard_url" name="dashboard_url" 
-                 value="{{ config.dashboard_url }}" placeholder="http://192.168.86.29:8123/lovelace/0?kiosk" required>
+                 value="{{ config.dashboard_url }}" placeholder="http://homeassistant.local:8123/lovelace/0?kiosk" required>
         </div>
         <div class="form-group">
           <label for="display_rotation">Screen Orientation (Wayland)</label>
@@ -386,8 +386,8 @@
         <div id="mqttFields" style="display: {{ 'block' if config.mqtt.enabled else 'none' }};">
           <div class="form-row form-group">
             <div>
-              <label for="mqtt_broker">MQTT Broker IP (Umbrel Mosquitto: 192.168.86.29)</label>
-              <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.mqtt.broker }}" placeholder="192.168.86.29">
+              <label for="mqtt_broker">MQTT Broker IP / Hostname</label>
+              <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.mqtt.broker }}" placeholder="192.168.1.100">
             </div>
             <div>
               <label for="mqtt_port">MQTT Port (Mosquitto is 1883, not 8123)</label>

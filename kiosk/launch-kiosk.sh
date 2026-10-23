@@ -134,16 +134,10 @@ policy_dirs = [
 allowed_list = [
     'localhost:8080',
     '127.0.0.1:8080',
-    'umbrel.local:8123',
-    'umbel.local:8123',
     'homeassistant.local:8123',
-    '192.168.86.29:8123',
     'http://localhost:8080',
     'http://127.0.0.1:8080',
-    'http://umbrel.local:8123',
-    'http://umbel.local:8123',
-    'http://homeassistant.local:8123',
-    'http://192.168.86.29:8123'
+    'http://homeassistant.local:8123'
 ]
 
 try:

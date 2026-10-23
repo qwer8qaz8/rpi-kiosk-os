@@ -60,7 +60,7 @@ class RPiKioskCard extends HTMLElement {
             <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
               <span style="font-size: 0.85em; opacity: 0.8; display: block; margin-bottom: 6px;">Switch Active Dashboard URL:</span>
               <div style="display: flex; gap: 8px;">
-                <input type="text" id="kiosk-url-input" placeholder="http://192.168.86.29:8123/lovelace/0?kiosk" style="flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, #444); background: var(--card-background-color, #222); color: var(--primary-text-color, #fff);">
+                <input type="text" id="kiosk-url-input" placeholder="http://homeassistant.local:8123/lovelace/0?kiosk" style="flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, #444); background: var(--card-background-color, #222); color: var(--primary-text-color, #fff);">
                 <mwc-button raised id="kiosk-btn-send-url">Send</mwc-button>
               </div>
             </div>
