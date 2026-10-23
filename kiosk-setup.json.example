@@ -1,0 +1,13 @@
+{
+  "dashboard_url": "http://homeassistant.local:8123/lovelace-kiosk/0?kiosk",
+  "display_type": "wayland_hdmi",
+  "display_rotation": "normal",
+  "kiosk_user_id": "<YOUR_HA_KIOSK_USER_ID>",
+  "mqtt": {
+    "enabled": true,
+    "broker": "192.168.1.100",
+    "port": 1883,
+    "username": "homeassistant",
+    "password": "your_secure_password"
+  }
+}

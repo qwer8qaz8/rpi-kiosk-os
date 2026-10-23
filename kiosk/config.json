@@ -1,0 +1,18 @@
+{
+  "dashboard_url": "http://homeassistant.local:8123/lovelace/0?kiosk",
+  "screen_on": true,
+  "display_output": "auto",
+  "display_rotation": "normal",
+  "touchscreen": "auto",
+  "prevent_screen_sleep": true,
+  "mqtt": {
+    "enabled": false,
+    "broker": "",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "topic_prefix": "homeassistant",
+    "device_id": "rpi_kiosk",
+    "device_name": "RPi Kiosk"
+  }
+}

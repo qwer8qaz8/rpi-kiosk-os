@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raspberry Pi Kiosk Manager</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --success-hover: #059669;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --input-bg: #0f172a;
+      --input-border: #475569;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 1.5rem 1rem 3rem 1rem;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-top: 0.25rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    @media (min-width: 480px) {
+      .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    .stat-box {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 0.75rem;
+      border-radius: 8px;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-value {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-top: 0.25rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-on { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-off { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+    /* Action Buttons */
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    @media (min-width: 480px) {
+      .btn-group {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary { background: var(--primary); }
+    .btn-primary:hover { background: var(--primary-hover); }
+
+    .btn-warning { background: var(--warning); color: #1e293b; }
+    .btn-warning:hover { opacity: 0.9; }
+
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover { background: var(--danger-hover); }
+
+    .btn-success { background: var(--success); }
+    .btn-success:hover { background: var(--success-hover); }
+
+    /* Form Fields */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="password"],
+    select {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--primary);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    @media (min-width: 480px) {
+      .form-row {
+        grid-template-columns: 2fr 1fr;
+      }
+      .form-row-half {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      cursor: pointer;
+    }
+
+    .checkbox-container input[type="checkbox"] {
+      width: 1.25rem;
+      height: 1.25rem;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .checkbox-container span {
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    /* Toast Notification */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 0.75rem 1.25rem;
+      border-radius: 9999px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      pointer-events: none;
+    }
+
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🖥️ RPi Kiosk Manager</h1>
+      <p>{{ status.hostname }} &bull; {{ status.ip }}</p>
+    </header>
+
+    <!-- System Telemetry Stats -->
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Screen</div>
+        <div class="stat-value">
+          <span id="screenStatusBadge" class="badge {{ 'badge-on' if status.screen_status == 'ON' else 'badge-off' }}">
+            {{ status.screen_status }}
+          </span>
+        </div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">CPU Temp</div>
+        <div class="stat-value">{{ status.cpu_temp }}°C</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Uptime</div>
+        <div class="stat-value">{{ status.uptime }}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Port</div>
+        <div class="stat-value">8080</div>
+      </div>
+    </div>
+
+    <!-- Quick Actions Card -->
+    <div class="card">
+      <div class="card-title">⚡ Quick Actions</div>
+      <div class="btn-group">
+        <button id="btnToggleScreen" class="btn btn-primary" onclick="toggleScreen()">
+          💡 Toggle Screen
+        </button>
+        <button id="btnReload" class="btn btn-warning" onclick="reloadKiosk()">
+          🔄 Reload Kiosk
+        </button>
+        <button id="btnReboot" class="btn btn-danger" onclick="rebootPi()">
+          🔌 Reboot Pi
+        </button>
+      </div>
+    </div>
+
+    <!-- Display Settings Card -->
+    <div class="card">
+      <div class="card-title">🖥️ Display & Dashboard</div>
+      <form id="displayForm" onsubmit="saveDisplaySettings(event)">
+        <div class="form-group">
+          <label for="dashboard_url">Dashboard / Start URL</label>
+          <input type="text" id="dashboard_url" name="dashboard_url" 
+                 value="{{ config.dashboard_url }}" placeholder="http://homeassistant.local:8123/lovelace/0?kiosk" required>
+        </div>
+        <div class="form-group">
+          <label for="display_rotation">Screen Orientation (Wayland)</label>
+          <select id="display_rotation" name="display_rotation">
+            <option value="normal" {% if config.display_rotation == 'normal' %}selected{% endif %}>Standard Landscape (0°)</option>
+            <option value="90" {% if config.display_rotation == '90' %}selected{% endif %}>Portrait (90° Clockwise)</option>
+            <option value="180" {% if config.display_rotation == '180' %}selected{% endif %}>Inverted Landscape (180°)</option>
+            <option value="270" {% if config.display_rotation == '270' %}selected{% endif %}>Inverted Portrait (270° Clockwise)</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-success" style="width: 100%; margin-top: 0.5rem;">
+          💾 Apply Display Settings
+        </button>
+      </form>
+    </div>
+
+    <!-- Home Assistant & MQTT Card -->
+    <div class="card">
+      <div class="card-title">🏠 Home Assistant & MQTT</div>
+      <form id="mqttForm" onsubmit="saveMqttSettings(event)">
+        <label class="checkbox-container">
+          <input type="checkbox" id="mqtt_enabled" name="mqtt_enabled" {% if config.mqtt.enabled %}checked{% endif %} onchange="toggleMqttFields()">
+          <span>Enable Home Assistant MQTT Auto-Discovery</span>
+        </label>
+
+        <div id="mqttFields" style="display: {{ 'block' if config.mqtt.enabled else 'none' }};">
+          <div class="form-row form-group">
+            <div>
+              <label for="mqtt_broker">Broker IP / Hostname (Umbrel or Home Assistant)</label>
+              <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.mqtt.broker }}" placeholder="192.168.1.100">
+            </div>
+            <div>
+              <label for="mqtt_port">Port</label>
+              <input type="number" id="mqtt_port" name="mqtt_port" value="{{ config.mqtt.port or 1883 }}" placeholder="1883">
+            </div>
+          </div>
+
+          <div class="form-row form-row-half form-group">
+            <div>
+              <label for="mqtt_username">MQTT Username</label>
+              <input type="text" id="mqtt_username" name="mqtt_username" value="{{ config.mqtt.username }}" placeholder="homeassistant">
+            </div>
+            <div>
+              <label for="mqtt_password">MQTT Password</label>
+              <input type="password" id="mqtt_password" name="mqtt_password" value="{{ '********' if config.mqtt.password else '' }}" placeholder="Password">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="mqtt_device_name">Device Name in Home Assistant</label>
+            <input type="text" id="mqtt_device_name" name="mqtt_device_name" value="{{ config.mqtt.device_name }}" placeholder="RPi Kiosk">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-success" style="width: 100%; margin-top: 0.5rem;">
+          💾 Save MQTT Settings
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast">✅ Action completed</div>
+
+  <script>
+    function showToast(message, isError = false) {
+      const toast = document.getElementById("toast");
+      toast.textContent = (isError ? "❌ " : "✅ ") + message;
+      toast.style.borderColor = isError ? "var(--danger)" : "var(--card-border)";
+      toast.classList.add("show");
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, 3000);
+    }
+
+    function toggleMqttFields() {
+      const enabled = document.getElementById("mqtt_enabled").checked;
+      document.getElementById("mqttFields").style.display = enabled ? "block" : "none";
+    }
+
+    async function toggleScreen() {
+      try {
+        const res = await fetch("/api/screen", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "toggle" })
+        });
+        const data = await res.json();
+        if (data.success) {
+          const badge = document.getElementById("screenStatusBadge");
+          badge.textContent = data.screen_status;
+          badge.className = "badge " + (data.screen_status === "ON" ? "badge-on" : "badge-off");
+          showToast("Screen toggled to " + data.screen_status);
+        } else {
+          showToast(data.error || "Failed to toggle screen", true);
+        }
+      } catch (e) {
+        showToast("Network error toggling screen", true);
+      }
+    }
+
+    async function reloadKiosk() {
+      if (!confirm("Reload kiosk browser display?")) return;
+      try {
+        const res = await fetch("/api/reload", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Kiosk display reloading...");
+        } else {
+          showToast("Failed to reload kiosk", true);
+        }
+      } catch (e) {
+        showToast("Error sending reload request", true);
+      }
+    }
+
+    async function rebootPi() {
+      if (!confirm("Are you sure you want to reboot the Raspberry Pi?")) return;
+      try {
+        const res = await fetch("/api/reboot", { method: "POST" });
+        const data = await res.json();
+        showToast("Raspberry Pi is rebooting...");
+      } catch (e) {
+        showToast("Reboot initiated", false);
+      }
+    }
+
+    async function saveDisplaySettings(e) {
+      e.preventDefault();
+      const payload = {
+        dashboard_url: document.getElementById("dashboard_url").value,
+        display_rotation: document.getElementById("display_rotation").value
+      };
+      try {
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Display settings saved & applied!");
+        } else {
+          showToast("Failed to save settings", true);
+        }
+      } catch (e) {
+        showToast("Error saving display settings", true);
+      }
+    }
+
+    async function saveMqttSettings(e) {
+      e.preventDefault();
+      const payload = {
+        mqtt_enabled: document.getElementById("mqtt_enabled").checked,
+        mqtt_broker: document.getElementById("mqtt_broker").value,
+        mqtt_port: document.getElementById("mqtt_port").value,
+        mqtt_username: document.getElementById("mqtt_username").value,
+        mqtt_password: document.getElementById("mqtt_password").value,
+        mqtt_device_name: document.getElementById("mqtt_device_name").value
+      };
+      try {
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("MQTT settings saved!");
+        } else {
+          showToast("Failed to save MQTT settings", true);
+        }
+      } catch (e) {
+        showToast("Error saving MQTT settings", true);
+      }
+    }
+  </script>
+</body>
+</html>
