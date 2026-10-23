@@ -202,9 +202,10 @@ update_from_github() {
   TMP_DIR=$(mktemp -d)
   if git clone --depth 1 "$REPO_URL" "$TMP_DIR" 2>/dev/null; then
     echo -e "${GREEN}Downloaded latest release.${NC}"
-    # Install any newly added dependencies (e.g. gammastep, ddcutil)
+    # Install any newly added dependencies (e.g. gammastep, ddcutil, avahi-daemon)
     apt-get update -y 2>/dev/null || true
-    apt-get install -y --no-install-recommends gammastep ddcutil 2>/dev/null || true
+    apt-get install -y --no-install-recommends gammastep ddcutil avahi-daemon 2>/dev/null || true
+    systemctl enable --now avahi-daemon 2>/dev/null || true
 
     cp -r "$TMP_DIR/kiosk/"* /opt/kiosk/
     cp "$TMP_DIR/kiosk-config.sh" /opt/kiosk/ 2>/dev/null || true

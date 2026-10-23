@@ -244,6 +244,7 @@ apt-get install -y --no-install-recommends \
   wlr-randr \
   gammastep \
   ddcutil \
+  avahi-daemon \
   python3-paho-mqtt \
   python3-flask \
   git \
