@@ -107,7 +107,11 @@ policy_dirs = [
 
 allowed_list = [
     'http://localhost:8080/*',
-    'http://127.0.0.1:8080/*'
+    'http://127.0.0.1:8080/*',
+    'http://umbrel.local:8123/*',
+    'http://umbel.local:8123/*',
+    'http://homeassistant.local:8123/*',
+    'http://192.168.*:8123/*'
 ]
 
 dash_url = 'http://homeassistant.local:8123/lovelace/0?kiosk'

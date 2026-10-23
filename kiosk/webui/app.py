@@ -243,9 +243,15 @@ def api_settings():
     # Dashboard URL
     new_url = req.get("dashboard_url")
     url_changed = False
-    if new_url and new_url.strip() != cfg.get("dashboard_url"):
-        cfg["dashboard_url"] = new_url.strip()
-        url_changed = True
+    if new_url:
+        new_url = new_url.strip()
+        if new_url.startswith("http:/") and not new_url.startswith("http://"):
+            new_url = "http://" + new_url[6:]
+        elif new_url.startswith("https:/") and not new_url.startswith("https://"):
+            new_url = "https://" + new_url[7:]
+        if new_url != cfg.get("dashboard_url"):
+            cfg["dashboard_url"] = new_url
+            url_changed = True
 
     # Screen Rotation
     new_rotation = req.get("display_rotation")

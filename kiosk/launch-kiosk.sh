@@ -19,7 +19,12 @@ DASHBOARD_URL=$(python3 -c "
 import json
 try:
     with open('$CONFIG_FILE') as f:
-        print(json.load(f).get('dashboard_url', 'http://homeassistant.local:8123/lovelace/0?kiosk'))
+        url = json.load(f).get('dashboard_url', 'http://homeassistant.local:8123/lovelace/0?kiosk')
+        if url.startswith('http:/') and not url.startswith('http://'):
+            url = 'http://' + url[6:]
+        elif url.startswith('https:/') and not url.startswith('https://'):
+            url = 'https://' + url[7:]
+        print(url)
 except Exception:
     print('http://homeassistant.local:8123/lovelace/0?kiosk')
 ")
@@ -115,7 +120,11 @@ policy_dirs = [
 
 allowed_list = [
     'http://localhost:8080/*',
-    'http://127.0.0.1:8080/*'
+    'http://127.0.0.1:8080/*',
+    'http://umbrel.local:8123/*',
+    'http://umbel.local:8123/*',
+    'http://homeassistant.local:8123/*',
+    'http://192.168.*:8123/*'
 ]
 
 try:
