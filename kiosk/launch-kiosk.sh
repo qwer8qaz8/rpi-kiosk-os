@@ -119,18 +119,28 @@ policy_dirs = [
 ]
 
 allowed_list = [
-    'http://localhost:8080/*',
-    'http://127.0.0.1:8080/*',
-    'http://umbrel.local:8123/*',
-    'http://umbel.local:8123/*',
-    'http://homeassistant.local:8123/*',
-    'http://192.168.*:8123/*'
+    'localhost:8080',
+    '127.0.0.1:8080',
+    'umbrel.local:8123',
+    'umbel.local:8123',
+    'homeassistant.local:8123',
+    '192.168.86.29:8123',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'http://umbrel.local:8123',
+    'http://umbel.local:8123',
+    'http://homeassistant.local:8123',
+    'http://192.168.86.29:8123'
 ]
 
 try:
+    if dash_url.startswith('http:/') and not dash_url.startswith('http://'):
+        dash_url = 'http://' + dash_url[6:]
+    elif dash_url.startswith('https:/') and not dash_url.startswith('https://'):
+        dash_url = 'https://' + dash_url[7:]
     p = urllib.parse.urlparse(dash_url)
     if p.netloc:
-        allowed_list.append(f'{p.scheme}://{p.netloc}/*')
+        allowed_list.append(p.netloc)
         allowed_list.append(f'{p.scheme}://{p.netloc}')
 except Exception:
     pass
@@ -144,7 +154,9 @@ try:
                 if u:
                     if '://' in u:
                         pu = urllib.parse.urlparse(u)
-                        allowed_list.append(f'{pu.scheme}://{pu.netloc}/*')
+                        if pu.netloc:
+                            allowed_list.append(pu.netloc)
+                            allowed_list.append(f'{pu.scheme}://{pu.netloc}')
                     else:
                         allowed_list.append(u)
 except Exception:
