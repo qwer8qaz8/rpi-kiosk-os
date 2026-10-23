@@ -13,15 +13,17 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+ORIGINAL_ARGS=("$@")
+SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+
 CONFIG_FILE="/etc/kiosk/config.json"
 REPO_URL="https://github.com/qwer8qaz8/rpi-kiosk-os.git"
 RAW_URL="https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main"
 
-# Root check helper
+# Root check helper - preserves original CLI arguments when re-executing with sudo
 require_root() {
   if [ "$EUID" -ne 0 ]; then
-    echo -e "${YELLOW}Root privileges required. Re-running with sudo...${NC}"
-    exec sudo -E bash "$0" "$@"
+    exec sudo -E bash "$SCRIPT_PATH" "${ORIGINAL_ARGS[@]}"
   fi
 }
 
@@ -351,6 +353,18 @@ if [ "$#" -gt 0 ]; then
       require_root
       remove_security_policy
       systemctl restart kiosk-display
+      exit 0
+      ;;
+    url)
+      require_root
+      clean_url="$2"
+      if [[ "$clean_url" =~ ^https?:/[^/] ]]; then
+        clean_url="${clean_url/:\//:\/\/}"
+      fi
+      save_config_val "dashboard_url" "$clean_url"
+      apply_security_policy
+      systemctl restart kiosk-display 2>/dev/null || true
+      echo -e "${GREEN}Dashboard URL updated to: $clean_url${NC}"
       exit 0
       ;;
     reboot)
