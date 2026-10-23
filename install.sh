@@ -307,6 +307,8 @@ chmod +x /opt/kiosk/webui/app.py
 chmod +x /opt/kiosk/kiosk-config.sh 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk-config 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk 2>/dev/null || true
+ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk-config 2>/dev/null || true
+ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk 2>/dev/null || true
 
 # Write /etc/kiosk/config.json
 cat << EOF > /etc/kiosk/config.json

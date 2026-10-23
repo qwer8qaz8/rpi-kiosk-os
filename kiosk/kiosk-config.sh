@@ -196,6 +196,8 @@ update_from_github() {
     chmod +x /opt/kiosk/*.sh /opt/kiosk/*.py /opt/kiosk/webui/*.py 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk-config 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk 2>/dev/null || true
+    ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk-config 2>/dev/null || true
+    ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk 2>/dev/null || true
     
     # Refresh security policies
     apply_security_policy

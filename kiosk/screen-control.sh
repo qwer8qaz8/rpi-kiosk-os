@@ -100,11 +100,22 @@ set_brightness() {
   done
 
   # 2. Universal Wayland Gamma Brightness (works on HDMI, DSI, TV via Cage/wlroots)
+  if ! command -v gammastep >/dev/null 2>&1; then
+    # Automatically install gammastep if missing
+    if [ "$EUID" -eq 0 ]; then
+      apt-get update -y >/dev/null 2>&1 && apt-get install -y --no-install-recommends gammastep >/dev/null 2>&1 || true
+    else
+      sudo apt-get update -y >/dev/null 2>&1 && sudo apt-get install -y --no-install-recommends gammastep >/dev/null 2>&1 || true
+    fi
+  fi
+
   if command -v gammastep >/dev/null 2>&1; then
-    pkill -f "gammastep -m wayland" 2>/dev/null || true
-    if [ "$percent" -lt 100 ]; then
-      ratio=$(python3 -c "print(round($percent / 100.0, 2))")
-      run_wayland_cmd gammastep -m wayland -b "${ratio}:1.0" -O 6500 >/dev/null 2>&1 &
+    pkill -9 -f "gammastep" 2>/dev/null || true
+    if [ "$percent" -ge 100 ]; then
+      run_wayland_cmd gammastep -m wayland -x >/dev/null 2>&1 || true
+    else
+      ratio=$(python3 -c "print(max(0.05, round($percent / 100.0, 2)))")
+      run_wayland_cmd gammastep -m wayland -O 6500 -b "$ratio" >/dev/null 2>&1 &
     fi
   fi
 
