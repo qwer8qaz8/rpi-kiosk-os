@@ -50,6 +50,19 @@ except Exception:
 echo "[kiosk] Starting kiosk environment..."
 echo "[kiosk] Dashboard URL: $DASHBOARD_URL"
 
+# If using a .local hostname (e.g. umbrel.local), ensure mDNS resolves
+if [[ "$DASHBOARD_URL" =~ ([a-zA-Z0-9.-]+\.local) ]]; then
+  mdns_host="${BASH_REMATCH[1]}"
+  echo "[kiosk] Resolving $mdns_host via mDNS..."
+  for attempt in 1 2 3; do
+    if getent hosts "$mdns_host" >/dev/null 2>&1 || (command -v avahi-resolve >/dev/null 2>&1 && avahi-resolve -n -4 "$mdns_host" >/dev/null 2>&1); then
+      echo "[kiosk] Successfully resolved $mdns_host via mDNS"
+      break
+    fi
+    sleep 1
+  done
+fi
+
 # Allow Wayland compositor to settle
 sleep 1
 

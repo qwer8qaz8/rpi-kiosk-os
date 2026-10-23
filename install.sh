@@ -245,6 +245,8 @@ apt-get install -y --no-install-recommends \
   gammastep \
   ddcutil \
   avahi-daemon \
+  libnss-mdns \
+  avahi-utils \
   python3-paho-mqtt \
   python3-flask \
   git \
