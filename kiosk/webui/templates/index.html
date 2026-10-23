@@ -386,14 +386,17 @@
         <div id="mqttFields" style="display: {{ 'block' if config.mqtt.enabled else 'none' }};">
           <div class="form-row form-group">
             <div>
-              <label for="mqtt_broker">Broker IP / Hostname (Umbrel: 192.168.86.29)</label>
+              <label for="mqtt_broker">MQTT Broker IP (Umbrel Mosquitto: 192.168.86.29)</label>
               <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.mqtt.broker }}" placeholder="192.168.86.29">
             </div>
             <div>
-              <label for="mqtt_port">Port</label>
+              <label for="mqtt_port">MQTT Port (Mosquitto is 1883, not 8123)</label>
               <input type="number" id="mqtt_port" name="mqtt_port" value="{{ config.mqtt.port or 1883 }}" placeholder="1883">
             </div>
           </div>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            ℹ️ <strong>Port Guide:</strong> Port <strong>1883</strong> is for the Mosquitto MQTT message broker on Umbrel. Port <strong>8123</strong> is Home Assistant's web dashboard. Port <strong>8080</strong> is this Kiosk Manager.
+          </p>
 
           <div class="form-row form-row-half form-group">
             <div>

@@ -101,38 +101,81 @@ except Exception:
     print('http://*:8123/*')
 ")
 
-# Ensure enterprise lockdown policy exists
-if [ -d /etc/chromium/policies/managed ] || sudo mkdir -p /etc/chromium/policies/managed 2>/dev/null; then
-  sudo tee /etc/chromium/policies/managed/kiosk_security_policy.json >/dev/null << EOF 2>/dev/null || true
-{
-  "URLBlocklist": ["*"],
-  "URLAllowlist": [
-    "$ALLOWED_HOST",
-    "http://192.168.*:8123/*",
-    "http://umbrel.local:8123/*",
-    "http://homeassistant.local:8123/*",
-    "http://localhost:8080/*",
-    "http://127.0.0.1:8080/*"
-  ],
-  "DeveloperToolsAvailability": 2,
-  "DefaultPopupsSetting": 2,
-  "PrintingEnabled": false,
-  "BrowserAddPersonEnabled": false,
-  "BrowserGuestModeEnabled": false,
-  "PasswordManagerEnabled": false,
-  "AutofillAddressEnabled": false,
-  "AutofillCreditCardEnabled": false,
-  "TranslateEnabled": false,
-  "EditBookmarksEnabled": false,
-  "BookmarkBarEnabled": false,
-  "ShowHomeButton": false,
-  "ExtensionInstallBlocklist": ["*"]
-}
-EOF
-fi
+# Build enterprise security policy JSON across all standard Chromium paths
+python3 -c "
+import json, os, urllib.parse
 
-# Launch Chromium locked in Kiosk mode
+config_file = '$CONFIG_FILE'
+dash_url = '$DASHBOARD_URL'
+policy_dirs = [
+    '/etc/chromium/policies/managed',
+    '/etc/chromium-browser/policies/managed',
+    '/etc/opt/chrome/policies/managed'
+]
+
+allowed_list = [
+    'http://localhost:8080/*',
+    'http://127.0.0.1:8080/*'
+]
+
+try:
+    p = urllib.parse.urlparse(dash_url)
+    if p.netloc:
+        allowed_list.append(f'{p.scheme}://{p.netloc}/*')
+        allowed_list.append(f'{p.scheme}://{p.netloc}')
+except Exception:
+    pass
+
+try:
+    if os.path.exists(config_file):
+        with open(config_file) as f:
+            cfg = json.load(f)
+            for u in cfg.get('allowed_urls', []):
+                u = u.strip()
+                if u:
+                    if '://' in u:
+                        pu = urllib.parse.urlparse(u)
+                        allowed_list.append(f'{pu.scheme}://{pu.netloc}/*')
+                    else:
+                        allowed_list.append(u)
+except Exception:
+    pass
+
+policy = {
+    'URLBlocklist': ['*'],
+    'URLAllowlist': list(set(allowed_list)),
+    'DeveloperToolsAvailability': 2,
+    'DefaultPopupsSetting': 2,
+    'AllowFileSelectionDialogs': False,
+    'DownloadRestrictions': 3,
+    'IncognitoModeAvailability': 1,
+    'PrintingEnabled': False,
+    'BrowserAddPersonEnabled': False,
+    'BrowserGuestModeEnabled': False,
+    'PasswordManagerEnabled': False,
+    'AutofillAddressEnabled': False,
+    'AutofillCreditCardEnabled': False,
+    'TranslateEnabled': False,
+    'EditBookmarksEnabled': False,
+    'BookmarkBarEnabled': False,
+    'ShowHomeButton': False,
+    'HomepageIsNewTabPage': False,
+    'NewTabPageLocation': dash_url,
+    'ExtensionInstallBlocklist': ['*']
+}
+
+for d in policy_dirs:
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'kiosk_security_policy.json'), 'w') as f:
+            json.dump(policy, f, indent=2)
+    except Exception:
+        pass
+" 2>/dev/null || true
+
+# Launch Chromium locked in Standalone Application Kiosk mode (--app disables tab strips and Ctrl+T shortcuts)
 exec "$CHROMIUM_BIN" \
+  --app="$DASHBOARD_URL" \
   --kiosk \
   --noerrdialogs \
   --disable-infobars \
@@ -141,13 +184,17 @@ exec "$CHROMIUM_BIN" \
   --disable-pinch \
   --overscroll-history-navigation=0 \
   --enable-features=OverlayScrollbar \
-  --disable-features=Translate \
+  --disable-features=Translate,OptimizationHints,MediaRouter \
   --disable-session-crashed-bubble \
   --disable-context-menu \
+  --disable-component-update \
+  --disable-background-networking \
+  --disable-domain-reliability \
+  --disable-sync \
+  --no-default-browser-check \
   --autoplay-policy=no-user-gesture-required \
   --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
   --password-store=basic \
   --disk-cache-dir=/tmp/chromium-cache \
   --enable-gpu-rasterization \
-  --enable-zero-copy \
-  "$DASHBOARD_URL"
+  --enable-zero-copy

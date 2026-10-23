@@ -119,8 +119,8 @@ def get_memory_usage():
 
 
 def run_screen_cmd(action, arg=""):
-    if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
-        cmd = [str(SCREEN_CONTROL_SCRIPT), action]
+    if SCREEN_CONTROL_SCRIPT.exists():
+        cmd = ["sudo", str(SCREEN_CONTROL_SCRIPT), action]
         if arg:
             cmd.append(str(arg))
         subprocess.run(cmd, capture_output=True, text=True)

@@ -52,57 +52,130 @@ with open('$CONFIG_FILE', 'w') as f:
 "
 }
 
+apply_preset() {
+  require_root
+  local preset="$1"
+  local custom_target="$2"
+  local url=""
+  local name=""
+
+  case "$preset" in
+    ha|homeassistant)
+      url="${custom_target:-http://homeassistant.local:8123/lovelace/0?kiosk}"
+      name="Home Assistant"
+      ;;
+    magicmirror|mirror)
+      url="${custom_target:-http://localhost:8080}"
+      name="MagicMirror²"
+      ;;
+    grafana|metrics)
+      url="${custom_target:-http://localhost:3000}"
+      name="Grafana Dashboard"
+      ;;
+    klipper|mainsail|fluidd|3dprinter|octoprint)
+      url="${custom_target:-http://localhost:7125}"
+      name="3D Printer (Klipper / Mainsail / Fluidd)"
+      ;;
+    dakboard|calendar)
+      url="${custom_target:-https://dakboard.com/app}"
+      name="DAKboard / Family Calendar"
+      ;;
+    *)
+      url="${custom_target:-http://homeassistant.local:8123/lovelace/0?kiosk}"
+      name="Custom Application"
+      ;;
+  esac
+
+  save_config_val "preset" "$preset"
+  save_config_val "dashboard_url" "$url"
+  apply_security_policy
+  systemctl restart kiosk-display 2>/dev/null || true
+  echo -e "${GREEN}Configured kiosk for: ${BOLD}$name${NC} ($url)"
+}
+
 apply_security_policy() {
   require_root
-  local ha_url
-  ha_url=$(load_config_val "dashboard_url" "http://homeassistant.local:8123/lovelace/0?kiosk")
-  
-  local allowed_host
-  allowed_host=$(python3 -c "
-import urllib.parse
-try:
-    p = urllib.parse.urlparse('$ha_url')
-    print(f'{p.scheme}://{p.netloc}/*')
-except Exception:
-    print('http://*:8123/*')
-")
+  python3 -c "
+import json, os, urllib.parse
 
-  mkdir -p /etc/chromium/policies/managed /etc/opt/chrome/policies/managed
-  cat << EOF > /etc/chromium/policies/managed/kiosk_security_policy.json
-{
-  "URLBlocklist": ["*"],
-  "URLAllowlist": [
-    "$allowed_host",
-    "http://192.168.*:8123/*",
-    "http://100.*:8123/*",
-    "http://umbrel.local:8123/*",
-    "http://homeassistant.local:8123/*",
-    "http://localhost:8080/*",
-    "http://127.0.0.1:8080/*"
-  ],
-  "DeveloperToolsAvailability": 2,
-  "DefaultPopupsSetting": 2,
-  "PrintingEnabled": false,
-  "BrowserAddPersonEnabled": false,
-  "BrowserGuestModeEnabled": false,
-  "PasswordManagerEnabled": false,
-  "AutofillAddressEnabled": false,
-  "AutofillCreditCardEnabled": false,
-  "TranslateEnabled": false,
-  "EditBookmarksEnabled": false,
-  "BookmarkBarEnabled": false,
-  "ShowHomeButton": false,
-  "ExtensionInstallBlocklist": ["*"]
+config_file = '$CONFIG_FILE'
+policy_dirs = [
+    '/etc/chromium/policies/managed',
+    '/etc/chromium-browser/policies/managed',
+    '/etc/opt/chrome/policies/managed'
+]
+
+allowed_list = [
+    'http://localhost:8080/*',
+    'http://127.0.0.1:8080/*'
+]
+
+dash_url = 'http://homeassistant.local:8123/lovelace/0?kiosk'
+
+try:
+    if os.path.exists(config_file):
+        with open(config_file) as f:
+            cfg = json.load(f)
+            dash_url = cfg.get('dashboard_url', dash_url)
+            for u in cfg.get('allowed_urls', []):
+                u = u.strip()
+                if u:
+                    if '://' in u:
+                        pu = urllib.parse.urlparse(u)
+                        allowed_list.append(f'{pu.scheme}://{pu.netloc}/*')
+                    else:
+                        allowed_list.append(u)
+except Exception:
+    pass
+
+try:
+    p = urllib.parse.urlparse(dash_url)
+    if p.netloc:
+        allowed_list.append(f'{p.scheme}://{p.netloc}/*')
+        allowed_list.append(f'{p.scheme}://{p.netloc}')
+except Exception:
+    pass
+
+policy = {
+    'URLBlocklist': ['*'],
+    'URLAllowlist': list(set(allowed_list)),
+    'DeveloperToolsAvailability': 2,
+    'DefaultPopupsSetting': 2,
+    'AllowFileSelectionDialogs': False,
+    'DownloadRestrictions': 3,
+    'IncognitoModeAvailability': 1,
+    'PrintingEnabled': False,
+    'BrowserAddPersonEnabled': False,
+    'BrowserGuestModeEnabled': False,
+    'PasswordManagerEnabled': False,
+    'AutofillAddressEnabled': False,
+    'AutofillCreditCardEnabled': False,
+    'TranslateEnabled': False,
+    'EditBookmarksEnabled': False,
+    'BookmarkBarEnabled': False,
+    'ShowHomeButton': False,
+    'HomepageIsNewTabPage': False,
+    'NewTabPageLocation': dash_url,
+    'ExtensionInstallBlocklist': ['*']
 }
-EOF
-  cp /etc/chromium/policies/managed/kiosk_security_policy.json /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
+
+for d in policy_dirs:
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, 'kiosk_security_policy.json'), 'w') as f:
+            json.dump(policy, f, indent=2)
+    except Exception as e:
+        print(f'Error writing {d}: {e}')
+"
   save_config_val "lockdown" "true"
-  echo -e "${GREEN}Enterprise security policy applied! Only Home Assistant URLs are permitted.${NC}"
+  echo -e "${GREEN}Enterprise security policy applied across all browser policy paths! Only authorized URLs are permitted.${NC}"
 }
 
 remove_security_policy() {
   require_root
-  rm -f /etc/chromium/policies/managed/kiosk_security_policy.json /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
+  rm -f /etc/chromium/policies/managed/kiosk_security_policy.json \
+        /etc/chromium-browser/policies/managed/kiosk_security_policy.json \
+        /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
   save_config_val "lockdown" "false"
   echo -e "${YELLOW}Lockdown disabled: standard browsing allowed.${NC}"
 }
@@ -113,11 +186,16 @@ update_from_github() {
   TMP_DIR=$(mktemp -d)
   if git clone --depth 1 "$REPO_URL" "$TMP_DIR" 2>/dev/null; then
     echo -e "${GREEN}Downloaded latest release.${NC}"
+    # Install any newly added dependencies (e.g. gammastep, ddcutil)
+    apt-get update -y 2>/dev/null || true
+    apt-get install -y --no-install-recommends gammastep ddcutil 2>/dev/null || true
+
     cp -r "$TMP_DIR/kiosk/"* /opt/kiosk/
     cp "$TMP_DIR/kiosk-config.sh" /opt/kiosk/ 2>/dev/null || true
     cp "$TMP_DIR/systemd/"* /etc/systemd/system/
     chmod +x /opt/kiosk/*.sh /opt/kiosk/*.py /opt/kiosk/webui/*.py 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk-config 2>/dev/null || true
+    ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk 2>/dev/null || true
     
     # Refresh security policies
     apply_security_policy
@@ -210,10 +288,89 @@ EOF
   echo -e "${YELLOW}Could not automatically configure static IP via nmcli or dhcpcd. Setting a DHCP reservation in your router is recommended.${NC}"
 }
 
+# Handle natural subcommands (e.g. `kiosk update`, `kiosk off`, `kiosk on`, `kiosk webui disable`)
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    update)
+      update_from_github
+      exit 0
+      ;;
+    on|off|toggle)
+      /opt/kiosk/screen-control.sh "$1"
+      exit 0
+      ;;
+    brightness)
+      /opt/kiosk/screen-control.sh brightness "$2"
+      exit 0
+      ;;
+    rotate)
+      /opt/kiosk/screen-control.sh rotate "$2"
+      exit 0
+      ;;
+    status)
+      echo -e "${CYAN}${BOLD}=== Kiosk Status ===${NC}"
+      echo -e "Screen Power: $(/opt/kiosk/screen-control.sh status)"
+      echo -e "Brightness:   $(/opt/kiosk/screen-control.sh get_brightness)%"
+      echo -e "URL:          $(load_config_val "dashboard_url" "None")"
+      echo -e "Web UI (8080): $(systemctl is-active kiosk-webui 2>/dev/null || echo "inactive")"
+      echo -e "MQTT Client:  $(systemctl is-active kiosk-mqtt 2>/dev/null || echo "inactive")"
+      exit 0
+      ;;
+    reload)
+      require_root
+      systemctl restart kiosk-display
+      echo -e "${GREEN}Kiosk display reloaded!${NC}"
+      exit 0
+      ;;
+    reboot)
+      require_root
+      reboot
+      exit 0
+      ;;
+    preset)
+      require_root
+      apply_preset "$2" "${3:-}"
+      exit 0
+      ;;
+    webui)
+      require_root
+      case "${2:-status}" in
+        disable|off|stop)
+          systemctl stop kiosk-webui 2>/dev/null || true
+          systemctl disable kiosk-webui 2>/dev/null || true
+          save_config_val "webui_enabled" "false"
+          echo -e "${YELLOW}Web UI service (port 8080) disabled and stopped.${NC}"
+          ;;
+        enable|on|start)
+          systemctl enable kiosk-webui 2>/dev/null || true
+          systemctl start kiosk-webui 2>/dev/null || true
+          save_config_val "webui_enabled" "true"
+          echo -e "${GREEN}Web UI service (port 8080) enabled and started.${NC}"
+          ;;
+        status)
+          systemctl status kiosk-webui --no-pager
+          ;;
+        *)
+          echo "Usage: kiosk webui [enable|disable|status]"
+          ;;
+      esac
+      exit 0
+      ;;
+  esac
+fi
+
 # Parse Command-Line Flags
 ACTION_PERFORMED=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --preset)
+      require_root
+      preset_name="$2"
+      preset_url="${3:-}"
+      apply_preset "$preset_name" "$preset_url"
+      ACTION_PERFORMED=1
+      if [ -n "$preset_url" ]; then shift 3; else shift 2; fi
+      ;;
     --url)
       require_root
       save_config_val "dashboard_url" "$2"
@@ -287,6 +444,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: kiosk-config [flags]"
       echo ""
       echo "Flags:"
+      echo "  --preset <NAME> [URL]  Apply preset: ha, magicmirror, grafana, 3dprinter, dakboard, custom"
       echo "  --url <URL>            Change dashboard URL"
       echo "  --kiosk-user-id <ID>   Set Kiosk User ID and print HA snippet"
       echo "  --rotate <0|90|180|270> Rotate screen"
@@ -316,20 +474,64 @@ echo "              Raspberry Pi Kiosk Configuration Menu               "
 echo "=================================================================="
 echo -e "${NC}"
 
-echo "1) Change Dashboard URL"
-echo "2) Configure Home Assistant Auto-Login (trusted_networks snippet)"
-echo "3) Apply / Refresh Enterprise Security Lockdown"
-echo "4) Adjust Screen Brightness (0-100%)"
-echo "5) Rotate Display Orientation"
-echo "6) Reload Kiosk Display"
-echo "7) Check for Updates from GitHub"
-echo "8) Set Static IP Address on Pi"
-echo "9) Exit"
+p_status=$(/opt/kiosk/screen-control.sh status 2>/dev/null || echo "ON")
+b_status=$(/opt/kiosk/screen-control.sh get_brightness 2>/dev/null || echo "100")
+web_active=$(systemctl is-active kiosk-webui 2>/dev/null || echo "inactive")
+
+echo "1) Choose Kiosk Preset (Home Assistant, MagicMirror², Grafana, 3D Printer, DAKboard, Custom)"
+echo "2) Change Dashboard URL directly"
+echo "3) Configure Home Assistant Auto-Login (trusted_networks snippet)"
+echo "4) Apply / Refresh Enterprise Security Lockdown"
+echo "5) Toggle Screen Power (Currently: $p_status)"
+echo "6) Adjust Screen Brightness (Currently: ${b_status}%)"
+echo "7) Rotate Display Orientation"
+echo "8) Toggle Web Dashboard Port 8080 (Currently: $web_active)"
+echo "9) Reload Kiosk Display"
+echo "10) Set Static IP Address on Pi"
+echo "11) Check for Updates from GitHub"
+echo "12) Exit"
 echo ""
-read -r -p "Select an option [1-9]: " CHOICE
+read -r -p "Select an option [1-12]: " CHOICE
 
 case "$CHOICE" in
   1)
+    echo ""
+    echo "Select a Kiosk Preset:"
+    echo "  1) Home Assistant (Default - Lovelace Dashboard)"
+    echo "  2) MagicMirror² (Smart Mirror / Info Display)"
+    echo "  3) Grafana Dashboard (Homelab / Solar / System Metrics)"
+    echo "  4) 3D Printer Controller (Klipper Mainsail / Fluidd / OctoPrint)"
+    echo "  5) DAKboard / Family Calendar"
+    echo "  6) Custom Web Application"
+    read -r -p "Choose [1-6, default 1]: " P_CHOICE
+    case "$P_CHOICE" in
+      2)
+        read -r -p "Enter MagicMirror URL [http://localhost:8080]: " MM_URL
+        apply_preset "magicmirror" "$MM_URL"
+        ;;
+      3)
+        read -r -p "Enter Grafana URL [http://localhost:3000]: " G_URL
+        apply_preset "grafana" "$G_URL"
+        ;;
+      4)
+        read -r -p "Enter 3D Printer URL [http://localhost:7125]: " TP_URL
+        apply_preset "3dprinter" "$TP_URL"
+        ;;
+      5)
+        read -r -p "Enter DAKboard Screen URL [https://dakboard.com/app]: " DB_URL
+        apply_preset "dakboard" "$DB_URL"
+        ;;
+      6)
+        read -r -p "Enter Custom URL: " CUST_URL
+        apply_preset "custom" "$CUST_URL"
+        ;;
+      *)
+        read -r -p "Enter Home Assistant URL [http://homeassistant.local:8123/lovelace/0?kiosk]: " HA_CUSTOM_URL
+        apply_preset "homeassistant" "$HA_CUSTOM_URL"
+        ;;
+    esac
+    ;;
+  2)
     current_url=$(load_config_val "dashboard_url" "http://homeassistant.local:8123/lovelace/0?kiosk")
     read -r -p "Enter new Dashboard URL [$current_url]: " NEW_URL
     NEW_URL="${NEW_URL:-$current_url}"
@@ -338,22 +540,25 @@ case "$CHOICE" in
     sudo systemctl restart kiosk-display
     echo -e "${GREEN}URL updated and kiosk reloaded!${NC}"
     ;;
-  2)
+  3)
     current_uid=$(load_config_val "kiosk_user_id" "")
     read -r -p "Enter your Home Assistant Kiosk User ID [$current_uid]: " NEW_UID
     NEW_UID="${NEW_UID:-$current_uid}"
     save_config_val "kiosk_user_id" "$NEW_UID"
     generate_ha_snippet
     ;;
-  3)
+  4)
     apply_security_policy
     sudo systemctl restart kiosk-display
     ;;
-  4)
-    read -r -p "Enter brightness percentage (0 to 100): " B_VAL
-    sudo /opt/kiosk/screen-control.sh brightness "$B_VAL"
-    ;;
   5)
+    /opt/kiosk/screen-control.sh toggle
+    ;;
+  6)
+    read -r -p "Enter brightness percentage (1 to 100): " B_VAL
+    /opt/kiosk/screen-control.sh brightness "$B_VAL"
+    ;;
+  7)
     echo "1) Normal (0°)"
     echo "2) Portrait (90°)"
     echo "3) Inverted (180°)"
@@ -365,20 +570,34 @@ case "$CHOICE" in
       4) ROT="270" ;;
       *) ROT="normal" ;;
     esac
-    sudo /opt/kiosk/screen-control.sh rotate "$ROT"
-    ;;
-  6)
-    sudo systemctl restart kiosk-display
-    echo -e "${GREEN}Kiosk display reloaded!${NC}"
-    ;;
-  7)
-    update_from_github
+    /opt/kiosk/screen-control.sh rotate "$ROT"
     ;;
   8)
+    if [ "$web_active" = "active" ]; then
+      require_root
+      systemctl stop kiosk-webui
+      systemctl disable kiosk-webui
+      echo -e "${YELLOW}Web UI service (port 8080) disabled and stopped.${NC}"
+    else
+      require_root
+      systemctl enable kiosk-webui
+      systemctl start kiosk-webui
+      echo -e "${GREEN}Web UI service (port 8080) enabled and started!${NC}"
+    fi
+    ;;
+  9)
+    require_root
+    systemctl restart kiosk-display
+    echo -e "${GREEN}Kiosk display reloaded!${NC}"
+    ;;
+  10)
     cur_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     read -r -p "Enter desired static IP address [$cur_ip]: " S_IP
     S_IP="${S_IP:-$cur_ip}"
     set_static_ip "$S_IP"
+    ;;
+  11)
+    update_from_github
     ;;
   *)
     echo "Exiting."

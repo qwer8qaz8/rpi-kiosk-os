@@ -17,13 +17,32 @@ import json
 import socket
 import logging
 import subprocess
+import secrets
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("kiosk-webui")
 
 app = Flask(__name__)
+
+# Persist or generate session secret key
+SECRET_FILE = Path("/etc/kiosk/.webui_secret")
+if not SECRET_FILE.exists():
+    try:
+        SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SECRET_FILE.write_text(secrets.token_hex(32))
+        os.chmod(SECRET_FILE, 0o600)
+    except Exception:
+        pass
+
+if SECRET_FILE.exists():
+    try:
+        app.secret_key = SECRET_FILE.read_text().strip()
+    except Exception:
+        app.secret_key = secrets.token_hex(32)
+else:
+    app.secret_key = secrets.token_hex(32)
 
 CONFIG_PATH = Path("/etc/kiosk/config.json")
 FALLBACK_CONFIG_PATH = Path("/opt/kiosk/config.json")
@@ -46,6 +65,9 @@ def load_config():
             "display_output": "auto",
             "display_rotation": "normal",
             "kiosk_user_id": "",
+            "lockdown": True,
+            "allowed_urls": [],
+            "webui_pin": "",
             "mqtt": {
                 "enabled": False,
                 "broker": "",
@@ -63,6 +85,14 @@ def load_config():
     except Exception as e:
         logger.warning(f"Error loading {path}: {e}")
         return {}
+
+
+def is_authenticated():
+    cfg = load_config()
+    pin = str(cfg.get("webui_pin", "")).strip()
+    if not pin:
+        return True
+    return session.get("authenticated", False) is True
 
 
 def save_config(data):
@@ -171,8 +201,8 @@ def api_screen():
     if action not in ["on", "off", "toggle"]:
         return jsonify({"success": False, "error": "Invalid action"}), 400
 
-    if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
-        subprocess.run([str(SCREEN_CONTROL_SCRIPT), action], capture_output=True)
+    if SCREEN_CONTROL_SCRIPT.exists():
+        subprocess.run(["sudo", str(SCREEN_CONTROL_SCRIPT), action], capture_output=True)
     
     current_status = get_screen_status()
     return jsonify({"success": True, "screen_status": current_status})
@@ -186,8 +216,8 @@ def api_brightness():
     except (ValueError, TypeError):
         return jsonify({"success": False, "error": "Invalid brightness value"}), 400
 
-    if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
-        subprocess.run([str(SCREEN_CONTROL_SCRIPT), "brightness", str(val)], capture_output=True)
+    if SCREEN_CONTROL_SCRIPT.exists():
+        subprocess.run(["sudo", str(SCREEN_CONTROL_SCRIPT), "brightness", str(val)], capture_output=True)
     return jsonify({"success": True, "brightness": val})
 
 

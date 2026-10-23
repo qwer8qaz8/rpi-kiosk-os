@@ -261,6 +261,48 @@ reboot_button: button.rpi_kiosk_reboot
 
 ---
 
+## ⌨️ Dedicated CLI Control: `kiosk`
+
+After installation, manage everything on the Pi anytime by simply typing:
+
+```bash
+kiosk
+```
+
+You can also run quick direct commands:
+
+```bash
+# Update kiosk software & policies from GitHub
+kiosk update
+
+# Screen power & brightness
+kiosk on
+kiosk off
+kiosk toggle
+kiosk brightness 50
+
+# Display orientation
+kiosk rotate normal   # or 90, 180, 270
+
+# Presets (Home Assistant, MagicMirror², Grafana, 3D Printer, DAKboard)
+kiosk preset ha
+kiosk preset magicmirror http://localhost:8080
+kiosk preset grafana http://localhost:3000
+kiosk preset 3dprinter http://localhost:7125
+
+# Web UI Management (Port 8080)
+kiosk webui disable   # Turn off web management completely
+kiosk webui enable    # Turn on web management
+kiosk webui status
+
+# Kiosk Control
+kiosk reload          # Reload the screen browser
+kiosk reboot          # Reboot Raspberry Pi
+kiosk status          # View hardware, screen & service status
+```
+
+---
+
 ## ⚙️ Service Control & Troubleshooting
 
 ```bash

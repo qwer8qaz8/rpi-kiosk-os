@@ -242,6 +242,8 @@ apt-get install -y --no-install-recommends \
   cage \
   "$CHROMIUM_PKG" \
   wlr-randr \
+  gammastep \
+  ddcutil \
   python3-paho-mqtt \
   python3-flask \
   git \
@@ -251,7 +253,7 @@ apt-get install -y --no-install-recommends \
 
 # Add target user to hardware groups
 echo -e "${GREEN}[2/6] Configuring user permissions for Wayland and hardware access...${NC}"
-for grp in video input render tty; do
+for grp in video input render tty i2c; do
   if getent group "$grp" >/dev/null; then
     usermod -a -G "$grp" "$TARGET_USER" 2>/dev/null || true
   fi
@@ -273,7 +275,12 @@ $TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart kiosk-display, /usr/
 $TARGET_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart kiosk-mqtt, /usr/bin/systemctl restart kiosk-mqtt
 $TARGET_USER ALL=(ALL) NOPASSWD: /bin/systemctl reboot, /usr/bin/systemctl reboot
 $TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/bl_power, /usr/bin/tee /sys/class/backlight/*/brightness
+$TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/graphics/fb*/blank
 $TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/vcgencmd display_power *
+$TARGET_USER ALL=(ALL) NOPASSWD: /opt/kiosk/screen-control.sh, /opt/kiosk/screen-control.sh *
+$TARGET_USER ALL=(ALL) NOPASSWD: /opt/kiosk/kiosk-config.sh, /usr/local/bin/kiosk-config, /usr/local/bin/kiosk
+$TARGET_USER ALL=(ALL) NOPASSWD: /bin/bash /opt/kiosk/kiosk-config.sh *, /usr/bin/bash /opt/kiosk/kiosk-config.sh *
+$TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/ddcutil *
 EOF
 chmod 0440 /etc/sudoers.d/kiosk
 
@@ -299,14 +306,19 @@ chmod +x /opt/kiosk/kiosk-mqtt.py
 chmod +x /opt/kiosk/webui/app.py
 chmod +x /opt/kiosk/kiosk-config.sh 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk-config 2>/dev/null || true
+ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk 2>/dev/null || true
 
 # Write /etc/kiosk/config.json
 cat << EOF > /etc/kiosk/config.json
 {
   "dashboard_url": "$HA_URL",
   "screen_on": true,
+  "brightness": 100,
   "display_type": "$DISPLAY_TYPE",
   "display_rotation": "$ROTATION",
+  "lockdown": true,
+  "allowed_urls": [],
+  "webui_pin": "",
   "mqtt": {
     "enabled": $MQTT_ENABLED,
     "broker": "$MQTT_BROKER",
@@ -324,36 +336,8 @@ chown -R "$TARGET_USER:$TARGET_USER" /opt/kiosk
 chown -R "$TARGET_USER:$TARGET_USER" /etc/kiosk
 chmod 664 /etc/kiosk/config.json
 
-# Enterprise Lockdown Policy for Chromium
-mkdir -p /etc/chromium/policies/managed /etc/opt/chrome/policies/managed
-cat << EOF > /etc/chromium/policies/managed/kiosk_security_policy.json
-{
-  "URLBlocklist": ["*"],
-  "URLAllowlist": [
-    "$HA_URL",
-    "http://192.168.*:8123/*",
-    "http://100.*:8123/*",
-    "http://umbrel.local:8123/*",
-    "http://homeassistant.local:8123/*",
-    "http://localhost:8080/*",
-    "http://127.0.0.1:8080/*"
-  ],
-  "DeveloperToolsAvailability": 2,
-  "DefaultPopupsSetting": 2,
-  "PrintingEnabled": false,
-  "BrowserAddPersonEnabled": false,
-  "BrowserGuestModeEnabled": false,
-  "PasswordManagerEnabled": false,
-  "AutofillAddressEnabled": false,
-  "AutofillCreditCardEnabled": false,
-  "TranslateEnabled": false,
-  "EditBookmarksEnabled": false,
-  "BookmarkBarEnabled": false,
-  "ShowHomeButton": false,
-  "ExtensionInstallBlocklist": ["*"]
-}
-EOF
-cp /etc/chromium/policies/managed/kiosk_security_policy.json /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
+# Apply Enterprise Lockdown Policy for Chromium across all browser policy paths
+/opt/kiosk/kiosk-config.sh --lockdown 2>/dev/null || true
 
 # Customize Systemd units for the detected user and UID
 echo -e "${GREEN}[5/6] Registering Systemd Services...${NC}"

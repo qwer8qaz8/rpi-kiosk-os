@@ -6,6 +6,8 @@ After=network.target
 Type=simple
 User=pi
 Group=pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-0
 WorkingDirectory=/opt/kiosk/webui
 ExecStart=/usr/bin/python3 /opt/kiosk/webui/app.py
 Restart=always

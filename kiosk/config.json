@@ -1,10 +1,14 @@
 {
   "dashboard_url": "http://homeassistant.local:8123/lovelace/0?kiosk",
   "screen_on": true,
+  "brightness": 100,
   "display_output": "auto",
   "display_rotation": "normal",
   "touchscreen": "auto",
   "prevent_screen_sleep": true,
+  "lockdown": true,
+  "allowed_urls": [],
+  "webui_pin": "",
   "mqtt": {
     "enabled": false,
     "broker": "",

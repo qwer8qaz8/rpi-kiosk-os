@@ -2,10 +2,11 @@
 # ==============================================================================
 # Screen Control Utility for Cage / Wayland Kiosk
 # Handles screen power (ON/OFF), brightness, rotation, and status detection across:
-# 1. Wayland outputs (via wlr-randr with auto-detected Wayland socket)
-# 2. Linux sysfs backlight (/sys/class/backlight/*)
-# 3. Linux framebuffer blanking (/sys/class/graphics/fb*/blank)
-# 4. Raspberry Pi firmware (vcgencmd display_power)
+# 1. Wayland outputs (via wlr-randr and Wayland compositor socket)
+# 2. Universal Wayland software gamma brightness (via gammastep)
+# 3. Linux sysfs backlight (/sys/class/backlight/*) for DSI touchscreens
+# 4. HDMI monitor DDC/CI hardware control (via ddcutil)
+# 5. Linux framebuffer blanking (/sys/class/graphics/fb*/blank)
 # ==============================================================================
 
 set -o pipefail
@@ -14,23 +15,18 @@ CONFIG_FILE="/etc/kiosk/config.json"
 ACTION="${1:-status}"
 ARG2="$2"
 
-# Ensure Wayland session environment is present even when invoked from background systemd service
 setup_wayland_env() {
-  if [ -z "$XDG_RUNTIME_DIR" ]; then
+  if [ -z "$XDG_RUNTIME_DIR" ] || [ ! -d "$XDG_RUNTIME_DIR" ]; then
     for uid_dir in /run/user/*; do
       if [ -d "$uid_dir" ]; then
-        for sock in "$uid_dir"/wayland-*; do
-          if [ -S "$sock" ]; then
-            export XDG_RUNTIME_DIR="$uid_dir"
-            export WAYLAND_DISPLAY="$(basename "$sock")"
-            break 2
-          fi
-        done
+        export XDG_RUNTIME_DIR="$uid_dir"
+        break
       fi
     done
   fi
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
 
-  if [ -z "$WAYLAND_DISPLAY" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
+  if [ -z "$WAYLAND_DISPLAY" ]; then
     for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
       if [ -S "$sock" ]; then
         export WAYLAND_DISPLAY="$(basename "$sock")"
@@ -38,14 +34,37 @@ setup_wayland_env() {
       fi
     done
   fi
+  export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 }
 
-setup_wayland_env
-
-get_active_wayland_outputs() {
-  if command -v wlr-randr >/dev/null 2>&1; then
-    wlr-randr 2>/dev/null | grep -E '^[A-Za-z0-9-]+' | awk '{print $1}'
+run_wayland_cmd() {
+  setup_wayland_env
+  local target_user
+  target_user=$(stat -c '%U' "$XDG_RUNTIME_DIR" 2>/dev/null || echo "pi")
+  if [ "$EUID" -eq 0 ] && [ "$target_user" != "root" ]; then
+    sudo -u "$target_user" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" "$@" 2>/dev/null || true
+  else
+    XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" "$@" 2>/dev/null || true
   fi
+}
+
+get_all_outputs() {
+  local outs=""
+  if command -v wlr-randr >/dev/null 2>&1; then
+    outs=$(run_wayland_cmd wlr-randr | grep -E '^[A-Za-z0-9-]+' | awk '{print $1}')
+  fi
+  if [ -z "$outs" ]; then
+    for conn in /sys/class/drm/card*-*; do
+      if [ -d "$conn" ]; then
+        cname=$(basename "$conn" | sed 's/card[0-9]*-//')
+        outs="$outs $cname"
+      fi
+    done
+  fi
+  if [ -z "$outs" ]; then
+    outs="HDMI-A-1 HDMI-A-2 DSI-1"
+  fi
+  echo "$outs"
 }
 
 set_backlight_power() {
@@ -63,14 +82,15 @@ set_backlight_power() {
 
 set_brightness() {
   local percent="$1"
-  if [ "$percent" -lt 0 ]; then percent=0; fi
+  if [ -z "$percent" ]; then percent=100; fi
+  if [ "$percent" -lt 1 ]; then percent=1; fi
   if [ "$percent" -gt 100 ]; then percent=100; fi
 
+  # 1. Hardware DSI backlight (if present)
   for bl in /sys/class/backlight/*; do
     if [ -d "$bl" ] && [ -f "$bl/max_brightness" ]; then
       max_b=$(cat "$bl/max_brightness" 2>/dev/null || echo 255)
       calc_b=$(( (max_b * percent) / 100 ))
-
       if [ -w "$bl/brightness" ]; then
         echo "$calc_b" > "$bl/brightness" 2>/dev/null || true
       else
@@ -79,6 +99,21 @@ set_brightness() {
     fi
   done
 
+  # 2. Universal Wayland Gamma Brightness (works on HDMI, DSI, TV via Cage/wlroots)
+  if command -v gammastep >/dev/null 2>&1; then
+    pkill -f "gammastep -m wayland" 2>/dev/null || true
+    if [ "$percent" -lt 100 ]; then
+      ratio=$(python3 -c "print(round($percent / 100.0, 2))")
+      run_wayland_cmd gammastep -m wayland -b "${ratio}:1.0" -O 6500 >/dev/null 2>&1 &
+    fi
+  fi
+
+  # 3. Hardware DDC/CI for HDMI monitors (if available)
+  if command -v ddcutil >/dev/null 2>&1; then
+    ddcutil setvcp 10 "$percent" >/dev/null 2>&1 &
+  fi
+
+  # Save to config
   if [ -f "$CONFIG_FILE" ]; then
     python3 -c "
 import json
@@ -115,19 +150,16 @@ get_brightness() {
 set_screen_power() {
   local state="$1" # "on" or "off"
   local outputs
-  outputs=$(get_active_wayland_outputs)
+  outputs=$(get_all_outputs)
 
   if [ "$state" = "on" ]; then
-    # 1. Backlight
+    # 1. Backlight on
     set_backlight_power 0
-    # Restore brightness from config or default to 100
-    b_val=$(get_brightness)
-    set_brightness "$b_val"
 
-    # 2. wlr-randr DPMS / power on all outputs
+    # 2. wlr-randr power on with --auto to restore layout and resolution
     if command -v wlr-randr >/dev/null 2>&1; then
       for out in $outputs; do
-        wlr-randr --output "$out" --on 2>/dev/null || true
+        run_wayland_cmd wlr-randr --output "$out" --on --auto
       done
     fi
 
@@ -138,12 +170,20 @@ set_screen_power() {
       fi
     done
 
-    # 4. vcgencmd if available
+    # 4. ddcutil monitor wake (HDMI)
+    if command -v ddcutil >/dev/null 2>&1; then
+      ddcutil setvcp d6 1 >/dev/null 2>&1 &
+    fi
+
+    # 5. vcgencmd if supported
     if command -v vcgencmd >/dev/null 2>&1; then
       vcgencmd display_power 1 2>/dev/null || true
     fi
 
-    # Update config
+    # 6. Restore brightness
+    b_val=$(get_brightness)
+    set_brightness "$b_val"
+
     if [ -f "$CONFIG_FILE" ]; then
       python3 -c "
 import json
@@ -160,13 +200,13 @@ except Exception:
     echo "Screen powered ON"
 
   elif [ "$state" = "off" ]; then
-    # 1. Backlight
+    # 1. Backlight off
     set_backlight_power 1
 
-    # 2. wlr-randr DPMS / power off all outputs
+    # 2. wlr-randr power off
     if command -v wlr-randr >/dev/null 2>&1; then
       for out in $outputs; do
-        wlr-randr --output "$out" --off 2>/dev/null || true
+        run_wayland_cmd wlr-randr --output "$out" --off
       done
     fi
 
@@ -177,12 +217,16 @@ except Exception:
       fi
     done
 
-    # 4. vcgencmd if available
+    # 4. ddcutil monitor sleep (HDMI)
+    if command -v ddcutil >/dev/null 2>&1; then
+      ddcutil setvcp d6 5 >/dev/null 2>&1 &
+    fi
+
+    # 5. vcgencmd if supported
     if command -v vcgencmd >/dev/null 2>&1; then
       vcgencmd display_power 0 2>/dev/null || true
     fi
 
-    # Update config
     if [ -f "$CONFIG_FILE" ]; then
       python3 -c "
 import json
@@ -203,7 +247,7 @@ except Exception:
 rotate_screen() {
   local rotation="$1"
   local output
-  output=$(get_active_wayland_outputs | head -n 1)
+  output=$(get_all_outputs | awk '{print $1}')
 
   case "$rotation" in
     90|90-cw)
@@ -221,10 +265,8 @@ rotate_screen() {
   esac
 
   if [ -n "$output" ] && command -v wlr-randr >/dev/null 2>&1; then
-    wlr-randr --output "$output" --transform "$transform" 2>/dev/null || true
+    run_wayland_cmd wlr-randr --output "$output" --transform "$transform"
     echo "Output $output rotated to $transform"
-  else
-    echo "No active Wayland output found to rotate"
   fi
 
   if [ -f "$CONFIG_FILE" ]; then
