@@ -444,6 +444,28 @@
         📋 Copy YAML Snippet
       </button>
     </div>
+
+    <!-- Enterprise Lockdown Card -->
+    <div class="card">
+      <div class="card-title">🛡️ Security & Lockdown</div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">
+        Locks Chromium with enterprise policies: blocks all non-Home Assistant websites, disables DevTools (F12), right-click context menus, and Chrome shortcut bypasses.
+      </p>
+      <button type="button" class="btn btn-warning" style="width: 100%;" onclick="applyLockdown()">
+        🔒 Enforce Strict Lockdown Policies
+      </button>
+    </div>
+
+    <!-- System Updates Card -->
+    <div class="card">
+      <div class="card-title">🔄 Software Updates</div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">
+        Pulls the latest release, fixes, and features directly from your GitHub repository (<code>qwer8qaz8/rpi-kiosk-os</code>).
+      </p>
+      <button type="button" id="btnUpdate" class="btn btn-primary" style="width: 100%;" onclick="triggerUpdate()">
+        🚀 Check & Apply GitHub Updates
+      </button>
+    </div>
   </div>
 
   <div id="toast">✅ Action completed</div>
@@ -596,6 +618,46 @@
         }
       } catch (e) {
         showToast("Error saving MQTT settings", true);
+      }
+    }
+
+    async function applyLockdown() {
+      if (!confirm("Enforce Enterprise Security Lockdown? This blocks all external websites and shortcut bypasses.")) return;
+      try {
+        const res = await fetch("/api/lockdown", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Strict Lockdown Enforced! Reloading...");
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          showToast("Failed to apply lockdown", true);
+        }
+      } catch (e) {
+        showToast("Error enforcing lockdown", true);
+      }
+    }
+
+    async function triggerUpdate() {
+      const btn = document.getElementById("btnUpdate");
+      btn.disabled = true;
+      btn.textContent = "⏳ Updating from GitHub...";
+      showToast("Downloading and applying updates...");
+      try {
+        const res = await fetch("/api/update", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Update applied successfully! Services restarted.");
+          btn.textContent = "✅ Updated!";
+          setTimeout(() => location.reload(), 2000);
+        } else {
+          showToast(data.error || "Update failed", true);
+          btn.textContent = "❌ Update Failed";
+          btn.disabled = false;
+        }
+      } catch (e) {
+        showToast("Error updating from GitHub", true);
+        btn.textContent = "❌ Update Failed";
+        btn.disabled = false;
       }
     }
 

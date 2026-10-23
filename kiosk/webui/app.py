@@ -270,5 +270,23 @@ def api_settings():
     return jsonify({"success": True, "message": "Settings saved successfully"})
 
 
+@app.route("/api/update", methods=["POST"])
+def api_update():
+    logger.info("Executing system update from GitHub...")
+    cmd = "/opt/kiosk/kiosk-config.sh --update"
+    res = subprocess.run(["sudo", "bash", "-c", cmd], capture_output=True, text=True)
+    if res.returncode == 0:
+        return jsonify({"success": True, "message": "Updated to latest version from GitHub successfully!"})
+    else:
+        return jsonify({"success": False, "error": res.stderr or "Update failed. Check internet connection."}), 500
+
+
+@app.route("/api/lockdown", methods=["POST"])
+def api_lockdown():
+    logger.info("Applying Enterprise Security Lockdown...")
+    subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
+    return jsonify({"success": True, "message": "Enterprise Security Lockdown applied!"})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
