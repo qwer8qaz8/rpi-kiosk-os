@@ -79,13 +79,15 @@ curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.
 
 * **⚡ Ultra-Minimal Footprint:** No desktop environments, window managers, or panels (`raspberrypi-ui-mods` is not installed). Boots directly into **Cage**, an ultra-lightweight Wayland kiosk compositor that displays a single full-screen window.
 * **🛡️ Secure Automatic Login:** Restricts auto-login strictly to the Pi's reserved IP address using Home Assistant's `trusted_networks` authentication provider—no hardcoded passwords needed.
-* **📱 Web Management Dashboard (Port 8080):** Mobile-friendly web interface accessible at `http://<PI_IP>:8080` to change the dashboard URL, toggle screen power, rotate the display (0°, 90°, 180°, 270°), and reboot without needing SSH.
+* **📱 Web Management Dashboard (Port 8080):** Mobile-friendly web interface accessible at `http://<PI_IP>:8080` to change the dashboard URL, adjust brightness (1–100%), toggle screen power, rotate the display (0°, 90°, 180°, 270°), and copy your custom `trusted_networks` YAML snippet without needing SSH.
 * **🏠 Native Home Assistant Integration via MQTT:** Automatically registers your Pi in Home Assistant via MQTT Discovery:
   * `switch.kiosk_screen` – Turn screen backlight/power ON or OFF.
+  * `number.kiosk_brightness` – Adjust screen brightness (1–100%).
   * `button.kiosk_reload` – Instantly reload Chromium / Lovelace view.
   * `button.kiosk_reboot` – Reboot the Pi from Home Assistant.
   * `sensor.kiosk_url` – Reports the active dashboard URL.
   * `sensor.kiosk_temperature` & `sensor.kiosk_ip` – Hardware telemetry.
+* **🧩 Custom Home Assistant Lovelace Card (`kiosk-card.js`):** A custom frontend plugin card for your Home Assistant dashboard with screen toggle, brightness slider, reload, reboot, and remote URL switcher.
 * **💾 SD Card Protection:** Chromium caching is directed to a RAM disk (`/tmp/chromium-cache`), preventing wear on your MicroSD card.
 * **🔄 Touchscreen & HDMI Support:** Works out-of-the-box with the Official Raspberry Pi Touchscreen (DSI), Waveshare DSI screens, and standard HDMI monitors.
 
@@ -99,6 +101,12 @@ rpi-kiosk-os/
 ├── uninstall.sh                # Clean uninstaller
 ├── README.md                   # Full step-by-step instructions
 ├── kiosk-setup.json.example    # Unattended setup configuration template
+├── homeassistant/
+│   ├── README.md               # Home Assistant integration guide
+│   ├── kiosk-card.js           # Custom Lovelace Card plugin
+│   └── automations/
+│       ├── kiosk_motion_screen.yaml # Motion wake & inactivity sleep
+│       └── kiosk_night_sleep.yaml   # Scheduled bedtime sleep & wake
 ├── kiosk/
 │   ├── config.json             # Runtime configuration
 │   ├── launch-kiosk.sh         # Script invoked by Cage systemd service
@@ -148,7 +156,7 @@ SSH into your Pi:
 ssh pi@192.168.1.50
 ```
 
-Run the installer (choose either interactive or flag-based):
+Run the installer:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | bash
@@ -177,6 +185,8 @@ homeassistant:
       allow_bypass_login: true
 ```
 
+*(Tip: You can also generate and copy this YAML snippet directly inside the Web UI at `http://<PI_IP>:8080`!)*
+
 5. Restart Home Assistant. When the Pi connects from `192.168.1.50`, it bypasses the login screen directly into the Kiosk user session!
 
 ---
@@ -200,8 +210,6 @@ kiosk_mode:
       hide_overflow: true
 ```
 
-Regular users will continue to see the full UI on other devices, while the kiosk touchscreen displays a clean, edge-to-edge dashboard!
-
 ---
 
 ## 📱 Local Web Management Dashboard (Port 8080)
@@ -214,26 +222,42 @@ http://<PI_IP>:8080
 
 ### Features available via Web UI:
 * 💡 **Toggle Screen Power:** Instantly turn display backlight ON or OFF.
+* 🔆 **Brightness Slider:** Adjust backlight brightness (1–100%) in real time.
 * 🔄 **Reload Kiosk:** Restarts the browser and refreshes the Lovelace view.
 * 🔌 **Reboot Pi:** Clean system reboot without needing SSH.
 * 🖥️ **Change Dashboard URL:** Update start URL and Lovelace path on the fly.
 * 📐 **Screen Rotation:** Rotate between Landscape (0°), Portrait (90°), Inverted (180°), or Inverted Portrait (270°).
 * 🏠 **MQTT Settings:** Update broker IP, port, and credentials.
+* 📋 **YAML Snippet Generator:** Live auto-generated `trusted_networks` block with one-click copy.
 
 ---
 
-## 🏠 Home Assistant Native MQTT Integration
+## 🏠 Home Assistant Native MQTT Integration & Custom Card
 
 When enabled, `kiosk-mqtt.service` automatically registers the kiosk in Home Assistant via MQTT Discovery:
 
 | Entity ID | Type | Description |
 | :--- | :--- | :--- |
 | `switch.rpi_kiosk_screen` | Switch | Turns screen backlight ON / OFF |
+| `number.rpi_kiosk_brightness` | Number | Adjusts screen brightness (1–100%) |
 | `button.rpi_kiosk_reload` | Button | Reloads the kiosk Chromium view |
 | `button.rpi_kiosk_reboot` | Button | Reboots the Raspberry Pi |
 | `sensor.rpi_kiosk_url` | Sensor | Reports the active dashboard URL |
 | `sensor.rpi_kiosk_temperature` | Sensor | CPU temperature in °C |
 | `sensor.rpi_kiosk_ip` | Sensor | Current local IP address |
+
+### Custom Lovelace Card (`rpi-kiosk-card`)
+Add [`homeassistant/kiosk-card.js`](homeassistant/kiosk-card.js) to your Home Assistant dashboard resources to get a dedicated kiosk control card:
+
+```yaml
+type: custom:rpi-kiosk-card
+title: Wall Kiosk Display
+switch_entity: switch.rpi_kiosk_screen
+brightness_entity: number.rpi_kiosk_brightness
+temperature_entity: sensor.rpi_kiosk_cpu_temperature
+reload_button: button.rpi_kiosk_reload
+reboot_button: button.rpi_kiosk_reboot
+```
 
 ---
 

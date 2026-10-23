@@ -4,8 +4,10 @@ app.py - Lightweight Kiosk Web Management Server (Port 8080)
 Provides a mobile-friendly dashboard to manage:
   - Dashboard URL
   - Screen Power ON / OFF
+  - Screen Brightness (1-100%)
   - Screen Orientation / Rotation
   - Home Assistant MQTT Broker Settings
+  - Home Assistant Auto-Login Configuration Generator
   - Kiosk Reload & System Reboot
 """
 
@@ -40,8 +42,10 @@ def load_config():
         return {
             "dashboard_url": "http://homeassistant.local:8123/lovelace/0?kiosk",
             "screen_on": True,
+            "brightness": 100,
             "display_output": "auto",
             "display_rotation": "normal",
+            "kiosk_user_id": "",
             "mqtt": {
                 "enabled": False,
                 "broker": "",
@@ -118,14 +122,28 @@ def get_screen_status():
     return "ON" if cfg.get("screen_on", True) else "OFF"
 
 
+def get_screen_brightness():
+    if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
+        res = subprocess.run([str(SCREEN_CONTROL_SCRIPT), "get_brightness"], capture_output=True, text=True)
+        if res.returncode == 0:
+            try:
+                return int(res.stdout.strip())
+            except ValueError:
+                pass
+    cfg = load_config()
+    return int(cfg.get("brightness", 100))
+
+
 @app.route("/")
 def index():
     cfg = load_config()
+    ip = get_local_ip()
     status = {
-        "ip": get_local_ip(),
+        "ip": ip,
         "cpu_temp": get_cpu_temp(),
         "uptime": get_uptime(),
         "screen_status": get_screen_status(),
+        "brightness": get_screen_brightness(),
         "hostname": socket.gethostname()
     }
     return render_template("index.html", config=cfg, status=status)
@@ -137,6 +155,7 @@ def api_status():
     return jsonify({
         "success": True,
         "screen_status": get_screen_status(),
+        "brightness": get_screen_brightness(),
         "ip": get_local_ip(),
         "cpu_temp": get_cpu_temp(),
         "uptime": get_uptime(),
@@ -157,6 +176,19 @@ def api_screen():
     
     current_status = get_screen_status()
     return jsonify({"success": True, "screen_status": current_status})
+
+
+@app.route("/api/brightness", methods=["POST"])
+def api_brightness():
+    req = request.get_json(silent=True) or request.form
+    try:
+        val = int(req.get("brightness", 100))
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "Invalid brightness value"}), 400
+
+    if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
+        subprocess.run([str(SCREEN_CONTROL_SCRIPT), "brightness", str(val)], capture_output=True)
+    return jsonify({"success": True, "brightness": val})
 
 
 @app.route("/api/reload", methods=["POST"])
@@ -187,12 +219,24 @@ def api_settings():
 
     # Screen Rotation
     new_rotation = req.get("display_rotation")
-    rotation_changed = False
     if new_rotation and new_rotation != cfg.get("display_rotation"):
         cfg["display_rotation"] = new_rotation
-        rotation_changed = True
         if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
             subprocess.run([str(SCREEN_CONTROL_SCRIPT), "rotate", new_rotation], capture_output=True)
+
+    # Kiosk User ID (for reference & snippet)
+    if "kiosk_user_id" in req:
+        cfg["kiosk_user_id"] = str(req.get("kiosk_user_id", "")).strip()
+
+    # Brightness
+    if "brightness" in req:
+        try:
+            b_val = int(req.get("brightness", 100))
+            cfg["brightness"] = b_val
+            if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
+                subprocess.run([str(SCREEN_CONTROL_SCRIPT), "brightness", str(b_val)], capture_output=True)
+        except (ValueError, TypeError):
+            pass
 
     # MQTT Settings
     mqtt_cfg = cfg.setdefault("mqtt", {})
@@ -209,19 +253,16 @@ def api_settings():
     if "mqtt_username" in req:
         mqtt_cfg["username"] = str(req.get("mqtt_username", "")).strip()
     if "mqtt_password" in req and req.get("mqtt_password") != "********":
-        # Only overwrite password if user entered a new one
         mqtt_cfg["password"] = str(req.get("mqtt_password", ""))
     if "mqtt_device_name" in req:
         mqtt_cfg["device_name"] = str(req.get("mqtt_device_name", "RPi Kiosk")).strip()
 
     save_config(cfg)
 
-    # If URL changed, reload kiosk display to load new page
     if url_changed:
         logger.info("Dashboard URL updated. Reloading kiosk display...")
         subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"], capture_output=True)
 
-    # If MQTT config changed, restart MQTT daemon
     if prev_mqtt != mqtt_cfg:
         logger.info("MQTT settings changed. Restarting kiosk-mqtt service...")
         subprocess.run(["sudo", "systemctl", "restart", "kiosk-mqtt"], capture_output=True)

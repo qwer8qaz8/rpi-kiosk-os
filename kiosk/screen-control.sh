@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Screen Control Utility for Cage / Wayland Kiosk
-# Handles screen power (ON/OFF), rotation, and status detection across:
+# Handles screen power (ON/OFF), brightness, rotation, and status detection across:
 # 1. Wayland outputs (via wlr-randr)
 # 2. Linux sysfs backlight (/sys/class/backlight/*)
 # 3. Raspberry Pi firmware (vcgencmd display_power)
@@ -30,6 +30,61 @@ set_backlight_power() {
       fi
     fi
   done
+}
+
+set_brightness() {
+  local percent="$1"
+  # Clamp 1-100
+  if [ "$percent" -lt 1 ]; then percent=1; fi
+  if [ "$percent" -gt 100 ]; then percent=100; fi
+
+  for bl in /sys/class/backlight/*; do
+    if [ -d "$bl" ] && [ -f "$bl/max_brightness" ]; then
+      max_b=$(cat "$bl/max_brightness" 2>/dev/null || echo 255)
+      calc_b=$(( (max_b * percent) / 100 ))
+      if [ "$calc_b" -lt 1 ]; then calc_b=1; fi
+
+      if [ -w "$bl/brightness" ]; then
+        echo "$calc_b" > "$bl/brightness" 2>/dev/null || true
+      else
+        sudo tee "$bl/brightness" >/dev/null <<< "$calc_b" 2>/dev/null || true
+      fi
+    fi
+  done
+
+  # Save to config
+  if [ -f "$CONFIG_FILE" ]; then
+    python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE', 'r') as f:
+        data = json.load(f)
+    data['brightness'] = $percent
+    with open('$CONFIG_FILE', 'w') as f:
+        json.dump(data, f, indent=2)
+except Exception:
+    pass
+" 2>/dev/null || true
+  fi
+  echo "$percent"
+}
+
+get_brightness() {
+  for bl in /sys/class/backlight/*; do
+    if [ -d "$bl" ] && [ -f "$bl/brightness" ] && [ -f "$bl/max_brightness" ]; then
+      cur=$(cat "$bl/brightness" 2>/dev/null || echo 255)
+      max_b=$(cat "$bl/max_brightness" 2>/dev/null || echo 255)
+      if [ "$max_b" -gt 0 ]; then
+        echo $(( (cur * 100) / max_b ))
+        return
+      fi
+    fi
+  done
+  # Fallback to config
+  if [ -f "$CONFIG_FILE" ]; then
+    python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('brightness', 100))" 2>/dev/null && return
+  fi
+  echo 100
 }
 
 set_screen_power() {
@@ -170,6 +225,12 @@ case "$ACTION" in
       set_screen_power "on"
     fi
     ;;
+  brightness)
+    set_brightness "$ARG2"
+    ;;
+  get_brightness)
+    get_brightness
+    ;;
   rotate)
     rotate_screen "$ARG2"
     ;;
@@ -177,7 +238,7 @@ case "$ACTION" in
     get_status
     ;;
   *)
-    echo "Usage: $0 {on|off|toggle|rotate <normal|90|180|270>|status}"
+    echo "Usage: $0 {on|off|toggle|brightness <1-100>|get_brightness|rotate <normal|90|180|270>|status}"
     exit 1
     ;;
 esac

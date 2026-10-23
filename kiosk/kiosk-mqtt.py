@@ -4,9 +4,11 @@ kiosk-mqtt.py
 Home Assistant MQTT Auto-Discovery and Device Control Daemon for Raspberry Pi Kiosk.
 Provides:
   - switch.kiosk_screen (Screen Power On/Off)
+  - number.kiosk_brightness (Screen Brightness 1-100%)
   - button.kiosk_reload (Reload Chromium / Kiosk)
   - button.kiosk_reboot (Reboot Raspberry Pi)
   - sensor.kiosk_url (Current Dashboard URL)
+  - text.kiosk_url (Change Dashboard URL remotely from Home Assistant)
   - sensor.kiosk_temperature (CPU Temperature)
   - sensor.kiosk_ip (Local IP Address)
   - sensor.kiosk_memory_usage (RAM % Used)
@@ -52,6 +54,15 @@ def load_config():
         return {}
 
 
+def save_config(cfg):
+    path = CONFIG_PATH if CONFIG_PATH.parent.exists() else FALLBACK_CONFIG_PATH
+    try:
+        with open(path, "w") as f:
+            json.dump(cfg, f, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving config to {path}: {e}")
+
+
 def get_mac_address():
     try:
         for iface in ["eth0", "wlan0", "en0"]:
@@ -68,7 +79,6 @@ def get_ip_address():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(1.0)
-        # Does not actually connect but resolves default routing interface
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
@@ -86,7 +96,6 @@ def get_cpu_temperature():
                 return round(float(temp_raw) / 1000.0, 1)
         res = subprocess.run(["vcgencmd", "measure_temp"], capture_output=True, text=True, timeout=2)
         if res.returncode == 0:
-            # Output format: temp=48.2'C
             return float(res.stdout.split("=")[1].split("'")[0])
     except Exception:
         pass
@@ -109,9 +118,12 @@ def get_memory_usage():
         return None
 
 
-def run_screen_cmd(action):
+def run_screen_cmd(action, arg=""):
     if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
-        subprocess.run([str(SCREEN_CONTROL_SCRIPT), action], capture_output=True, text=True)
+        cmd = [str(SCREEN_CONTROL_SCRIPT), action]
+        if arg:
+            cmd.append(str(arg))
+        subprocess.run(cmd, capture_output=True, text=True)
     else:
         logger.warning(f"screen-control.sh not found at {SCREEN_CONTROL_SCRIPT}")
 
@@ -122,6 +134,17 @@ def get_screen_state():
         if res.returncode == 0:
             return res.stdout.strip().upper()
     return "ON"
+
+
+def get_screen_brightness():
+    if SCREEN_CONTROL_SCRIPT.exists() and os.access(SCREEN_CONTROL_SCRIPT, os.X_OK):
+        res = subprocess.run([str(SCREEN_CONTROL_SCRIPT), "get_brightness"], capture_output=True, text=True)
+        if res.returncode == 0:
+            try:
+                return int(res.stdout.strip())
+            except ValueError:
+                pass
+    return 100
 
 
 class KioskMQTTDaemon:
@@ -141,11 +164,9 @@ class KioskMQTTDaemon:
         client_id = f"{self.device_id}_daemon"
 
         try:
-            # paho-mqtt v2 API
             from paho.mqtt.enums import CallbackAPIVersion
             client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=client_id, protocol=mqtt.MQTTv311)
         except (ImportError, AttributeError):
-            # paho-mqtt v1 API
             client = mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv311)
 
         user = mqtt_cfg.get("username")
@@ -153,7 +174,6 @@ class KioskMQTTDaemon:
         if user:
             client.username_pw_set(user, pw or None)
 
-        # Last Will and Testament
         client.will_set(self.status_topic, payload="offline", qos=1, retain=True)
 
         client.on_connect = self.on_connect
@@ -164,15 +184,16 @@ class KioskMQTTDaemon:
     def on_connect(self, client, userdata, flags, rc, *extra):
         logger.info(f"Connected to MQTT broker (rc: {rc})")
         self.is_connected = True
-        # Mark online
         client.publish(self.status_topic, "online", qos=1, retain=True)
-        # Register Home Assistant Auto-Discovery
         self.publish_discovery()
-        # Subscribe to command topics
+        
+        # Subscriptions
         client.subscribe(f"{self.base_topic}/screen/set", qos=1)
+        client.subscribe(f"{self.base_topic}/brightness/set", qos=1)
+        client.subscribe(f"{self.base_topic}/url/set", qos=1)
         client.subscribe(f"{self.base_topic}/reload/set", qos=1)
         client.subscribe(f"{self.base_topic}/reboot/set", qos=1)
-        # Publish initial states
+        
         self.publish_states()
 
     def on_disconnect(self, client, userdata, rc, *extra):
@@ -192,6 +213,23 @@ class KioskMQTTDaemon:
                 run_screen_cmd("off")
                 client.publish(f"{self.base_topic}/screen/state", "OFF", qos=1, retain=True)
 
+        elif topic == f"{self.base_topic}/brightness/set":
+            try:
+                b_val = int(float(payload))
+                run_screen_cmd("brightness", b_val)
+                client.publish(f"{self.base_topic}/brightness/state", str(b_val), qos=1, retain=True)
+            except ValueError:
+                logger.warning(f"Invalid brightness payload: {payload}")
+
+        elif topic == f"{self.base_topic}/url/set":
+            if payload:
+                logger.info(f"Updating dashboard URL via MQTT to: {payload}")
+                cfg = load_config()
+                cfg["dashboard_url"] = payload
+                save_config(cfg)
+                client.publish(f"{self.base_topic}/url/state", payload, qos=1, retain=True)
+                subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"], capture_output=True)
+
         elif topic == f"{self.base_topic}/reload/set":
             logger.info("Triggering Kiosk display reload...")
             subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"], capture_output=True)
@@ -206,12 +244,12 @@ class KioskMQTTDaemon:
             "name": self.device_name,
             "model": "Raspberry Pi Kiosk",
             "manufacturer": "Raspberry Pi OS",
-            "sw_version": "1.0.0"
+            "sw_version": "1.1.0"
         }
 
         # 1. Screen Switch
         switch_disc = {
-            "name": f"{self.device_name} Screen",
+            "name": f"{self.device_name} Screen Power",
             "unique_id": f"{self.device_id}_screen",
             "state_topic": f"{self.base_topic}/screen/state",
             "command_topic": f"{self.base_topic}/screen/set",
@@ -226,7 +264,26 @@ class KioskMQTTDaemon:
             json.dumps(switch_disc), qos=1, retain=True
         )
 
-        # 2. Reload Button
+        # 2. Brightness Number
+        bright_disc = {
+            "name": f"{self.device_name} Brightness",
+            "unique_id": f"{self.device_id}_brightness",
+            "state_topic": f"{self.base_topic}/brightness/state",
+            "command_topic": f"{self.base_topic}/brightness/set",
+            "min": 1,
+            "max": 100,
+            "step": 5,
+            "unit_of_measurement": "%",
+            "availability_topic": self.status_topic,
+            "icon": "mdi:brightness-6",
+            "device": device_info
+        }
+        self.client.publish(
+            f"{self.prefix}/number/{self.device_id}/brightness/config",
+            json.dumps(bright_disc), qos=1, retain=True
+        )
+
+        # 3. Reload Button
         reload_disc = {
             "name": f"{self.device_name} Reload",
             "unique_id": f"{self.device_id}_reload",
@@ -241,7 +298,7 @@ class KioskMQTTDaemon:
             json.dumps(reload_disc), qos=1, retain=True
         )
 
-        # 3. Reboot Button
+        # 4. Reboot Button
         reboot_disc = {
             "name": f"{self.device_name} Reboot",
             "unique_id": f"{self.device_id}_reboot",
@@ -256,9 +313,9 @@ class KioskMQTTDaemon:
             json.dumps(reboot_disc), qos=1, retain=True
         )
 
-        # 4. URL Sensor
+        # 5. URL Sensor
         url_disc = {
-            "name": f"{self.device_name} URL",
+            "name": f"{self.device_name} Active URL",
             "unique_id": f"{self.device_id}_url",
             "state_topic": f"{self.base_topic}/url/state",
             "availability_topic": self.status_topic,
@@ -270,7 +327,7 @@ class KioskMQTTDaemon:
             json.dumps(url_disc), qos=1, retain=True
         )
 
-        # 5. Temperature Sensor
+        # 6. Temperature Sensor
         temp_disc = {
             "name": f"{self.device_name} CPU Temperature",
             "unique_id": f"{self.device_id}_temp",
@@ -287,7 +344,7 @@ class KioskMQTTDaemon:
             json.dumps(temp_disc), qos=1, retain=True
         )
 
-        # 6. IP Address Sensor
+        # 7. IP Address Sensor
         ip_disc = {
             "name": f"{self.device_name} IP Address",
             "unique_id": f"{self.device_id}_ip",
@@ -307,16 +364,16 @@ class KioskMQTTDaemon:
         if not self.is_connected:
             return
 
-        # Screen state
         screen_st = get_screen_state()
         self.client.publish(f"{self.base_topic}/screen/state", screen_st, qos=1, retain=True)
 
-        # URL state
+        bright_val = get_screen_brightness()
+        self.client.publish(f"{self.base_topic}/brightness/state", str(bright_val), qos=1, retain=True)
+
         cfg = load_config()
         url = cfg.get("dashboard_url", "http://homeassistant.local:8123/lovelace/0?kiosk")
         self.client.publish(f"{self.base_topic}/url/state", url, qos=1, retain=True)
 
-        # System telemetry
         telemetry = {
             "ip_address": get_ip_address(),
             "temperature": get_cpu_temperature(),
@@ -332,7 +389,6 @@ class KioskMQTTDaemon:
             broker = mqtt_cfg.get("broker", "").strip()
 
             if not enabled or not broker:
-                # MQTT is disabled or unconfigured in config.json
                 logger.debug("MQTT is disabled or broker is empty. Waiting...")
                 time.sleep(10)
                 continue
@@ -344,9 +400,7 @@ class KioskMQTTDaemon:
                 self.client.connect(broker, port, keepalive=60)
                 self.client.loop_start()
 
-                # State update loop while connected
                 while not self.stop_event.is_set():
-                    # Check if config changed
                     new_cfg = load_config()
                     if new_cfg.get("mqtt") != self.config.get("mqtt"):
                         logger.info("MQTT configuration updated. Reconnecting...")

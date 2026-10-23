@@ -172,7 +172,10 @@
     .btn-success { background: var(--success); }
     .btn-success:hover { background: var(--success-hover); }
 
-    /* Form Fields */
+    .btn-secondary { background: #475569; }
+    .btn-secondary:hover { background: #334155; }
+
+    /* Sliders & Form Fields */
     .form-group {
       margin-bottom: 1rem;
     }
@@ -202,6 +205,16 @@
       font-size: 0.95rem;
       outline: none;
       transition: border-color 0.2s;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      background: var(--input-border);
+      border-radius: 5px;
+      outline: none;
+      accent-color: var(--primary);
+      cursor: pointer;
     }
 
     input:focus, select:focus {
@@ -241,6 +254,20 @@
     .checkbox-container span {
       font-size: 0.95rem;
       font-weight: 500;
+    }
+
+    /* Code Snippet Box */
+    .code-box {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #38bdf8;
+      overflow-x: auto;
+      white-space: pre;
+      margin-bottom: 0.75rem;
     }
 
     /* Toast Notification */
@@ -288,6 +315,10 @@
         </div>
       </div>
       <div class="stat-box">
+        <div class="stat-label">Brightness</div>
+        <div class="stat-value" id="brightnessStatVal">{{ status.brightness }}%</div>
+      </div>
+      <div class="stat-box">
         <div class="stat-label">CPU Temp</div>
         <div class="stat-value">{{ status.cpu_temp }}°C</div>
       </div>
@@ -295,16 +326,12 @@
         <div class="stat-label">Uptime</div>
         <div class="stat-value">{{ status.uptime }}</div>
       </div>
-      <div class="stat-box">
-        <div class="stat-label">Port</div>
-        <div class="stat-value">8080</div>
-      </div>
     </div>
 
     <!-- Quick Actions Card -->
     <div class="card">
-      <div class="card-title">⚡ Quick Actions</div>
-      <div class="btn-group">
+      <div class="card-title">⚡ Quick Controls</div>
+      <div class="btn-group" style="margin-bottom: 1.25rem;">
         <button id="btnToggleScreen" class="btn btn-primary" onclick="toggleScreen()">
           💡 Toggle Screen
         </button>
@@ -315,16 +342,22 @@
           🔌 Reboot Pi
         </button>
       </div>
+
+      <!-- Brightness Slider -->
+      <div class="form-group">
+        <label for="brightnessSlider">Brightness: <span id="brightnessLabel">{{ status.brightness }}</span>%</label>
+        <input type="range" id="brightnessSlider" min="5" max="100" step="5" value="{{ status.brightness }}" oninput="updateBrightnessLabel(this.value)" onchange="sendBrightness(this.value)">
+      </div>
     </div>
 
     <!-- Display Settings Card -->
     <div class="card">
-      <div class="card-title">🖥️ Display & Dashboard</div>
+      <div class="card-title">🖥️ Display & Dashboard Settings</div>
       <form id="displayForm" onsubmit="saveDisplaySettings(event)">
         <div class="form-group">
           <label for="dashboard_url">Dashboard / Start URL</label>
           <input type="text" id="dashboard_url" name="dashboard_url" 
-                 value="{{ config.dashboard_url }}" placeholder="http://homeassistant.local:8123/lovelace/0?kiosk" required>
+                 value="{{ config.dashboard_url }}" placeholder="http://192.168.86.29:8123/lovelace/0?kiosk" required>
         </div>
         <div class="form-group">
           <label for="display_rotation">Screen Orientation (Wayland)</label>
@@ -347,14 +380,14 @@
       <form id="mqttForm" onsubmit="saveMqttSettings(event)">
         <label class="checkbox-container">
           <input type="checkbox" id="mqtt_enabled" name="mqtt_enabled" {% if config.mqtt.enabled %}checked{% endif %} onchange="toggleMqttFields()">
-          <span>Enable Home Assistant MQTT Auto-Discovery</span>
+          <span>Enable Native Home Assistant Auto-Discovery (MQTT)</span>
         </label>
 
         <div id="mqttFields" style="display: {{ 'block' if config.mqtt.enabled else 'none' }};">
           <div class="form-row form-group">
             <div>
-              <label for="mqtt_broker">Broker IP / Hostname (Umbrel or Home Assistant)</label>
-              <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.mqtt.broker }}" placeholder="192.168.1.100">
+              <label for="mqtt_broker">Broker IP / Hostname (Umbrel: 192.168.86.29)</label>
+              <input type="text" id="mqtt_broker" name="mqtt_broker" value="{{ config.mqtt.broker }}" placeholder="192.168.86.29">
             </div>
             <div>
               <label for="mqtt_port">Port</label>
@@ -364,11 +397,11 @@
 
           <div class="form-row form-row-half form-group">
             <div>
-              <label for="mqtt_username">MQTT Username</label>
+              <label for="mqtt_username">MQTT Username (Optional)</label>
               <input type="text" id="mqtt_username" name="mqtt_username" value="{{ config.mqtt.username }}" placeholder="homeassistant">
             </div>
             <div>
-              <label for="mqtt_password">MQTT Password</label>
+              <label for="mqtt_password">MQTT Password (Optional)</label>
               <input type="password" id="mqtt_password" name="mqtt_password" value="{{ '********' if config.mqtt.password else '' }}" placeholder="Password">
             </div>
           </div>
@@ -384,11 +417,40 @@
         </button>
       </form>
     </div>
+
+    <!-- Home Assistant Auto-Login Configuration Generator Card -->
+    <div class="card">
+      <div class="card-title">🔑 Auto-Login YAML Helper</div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">
+        Generate your drop-in Home Assistant <code style="color: #38bdf8;">configuration.yaml</code> snippet to bypass the password prompt securely.
+      </p>
+      
+      <div class="form-group">
+        <label for="kioskUserIdInput">Home Assistant Kiosk User ID (Settings &rarr; People &rarr; Users):</label>
+        <input type="text" id="kioskUserIdInput" value="{{ config.kiosk_user_id or '' }}" placeholder="e.g. a1b2c3d4e5f67890123456789abcdef0" oninput="updateSnippet()">
+      </div>
+
+      <div class="code-box" id="yamlSnippetBox">homeassistant:
+  auth_providers:
+    - type: homeassistant
+    - type: trusted_networks
+      trusted_networks:
+        - {{ status.ip }}/32
+      trusted_users:
+        {{ status.ip }}: <YOUR_USER_ID>
+      allow_bypass_login: true</div>
+
+      <button type="button" class="btn btn-secondary" style="width: 100%;" onclick="copySnippet()">
+        📋 Copy YAML Snippet
+      </button>
+    </div>
   </div>
 
   <div id="toast">✅ Action completed</div>
 
   <script>
+    const PI_IP = "{{ status.ip }}";
+
     function showToast(message, isError = false) {
       const toast = document.getElementById("toast");
       toast.textContent = (isError ? "❌ " : "✅ ") + message;
@@ -402,6 +464,27 @@
     function toggleMqttFields() {
       const enabled = document.getElementById("mqtt_enabled").checked;
       document.getElementById("mqttFields").style.display = enabled ? "block" : "none";
+    }
+
+    function updateBrightnessLabel(val) {
+      document.getElementById("brightnessLabel").textContent = val;
+      document.getElementById("brightnessStatVal").textContent = val + "%";
+    }
+
+    async function sendBrightness(val) {
+      try {
+        const res = await fetch("/api/brightness", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ brightness: parseInt(val, 10) })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Brightness set to " + val + "%");
+        }
+      } catch (e) {
+        showToast("Error updating brightness", true);
+      }
     }
 
     async function toggleScreen() {
@@ -444,18 +527,33 @@
       if (!confirm("Are you sure you want to reboot the Raspberry Pi?")) return;
       try {
         const res = await fetch("/api/reboot", { method: "POST" });
-        const data = await res.json();
         showToast("Raspberry Pi is rebooting...");
       } catch (e) {
         showToast("Reboot initiated", false);
       }
     }
 
+    function updateSnippet() {
+      const userId = document.getElementById("kioskUserIdInput").value.trim() || "<YOUR_USER_ID>";
+      const snippet = `homeassistant:\n  auth_providers:\n    - type: homeassistant\n    - type: trusted_networks\n      trusted_networks:\n        - ${PI_IP}/32\n      trusted_users:\n        ${PI_IP}: ${userId}\n      allow_bypass_login: true`;
+      document.getElementById("yamlSnippetBox").textContent = snippet;
+    }
+
+    function copySnippet() {
+      const text = document.getElementById("yamlSnippetBox").textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("YAML copied to clipboard!");
+      }).catch(() => {
+        showToast("Unable to copy to clipboard", true);
+      });
+    }
+
     async function saveDisplaySettings(e) {
       e.preventDefault();
       const payload = {
         dashboard_url: document.getElementById("dashboard_url").value,
-        display_rotation: document.getElementById("display_rotation").value
+        display_rotation: document.getElementById("display_rotation").value,
+        kiosk_user_id: document.getElementById("kioskUserIdInput").value
       };
       try {
         const res = await fetch("/api/settings", {
@@ -500,6 +598,9 @@
         showToast("Error saving MQTT settings", true);
       }
     }
+
+    // Init snippet on load
+    updateSnippet();
   </script>
 </body>
 </html>

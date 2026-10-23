@@ -1,0 +1,63 @@
+blueprint:
+  name: "RPi Kiosk - Motion Activated Screen Wake & Sleep"
+  description: "Automatically turns on the Raspberry Pi Kiosk screen when motion or presence is detected, and turns it off after a period of inactivity."
+  domain: automation
+  input:
+    motion_sensor:
+      name: Motion / Presence Sensor
+      description: The motion sensor or mmWave radar sensor near your kiosk.
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class: [motion, occupancy, presence]
+    kiosk_screen:
+      name: Kiosk Screen Switch
+      description: The switch entity controlling your kiosk screen (from MQTT Discovery).
+      default: switch.rpi_kiosk_screen
+      selector:
+        entity:
+          domain: switch
+    no_motion_wait:
+      name: Inactivity Timeout (Minutes)
+      description: How long to wait after motion clears before turning the screen off.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: minutes
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input motion_sensor
+    to: "on"
+  - platform: state
+    entity_id: !input motion_sensor
+    to: "off"
+    for:
+      minutes: !input no_motion_wait
+
+action:
+  - choose:
+      # If motion is detected, turn screen ON
+      - conditions:
+          - condition: state
+            entity_id: !input motion_sensor
+            state: "on"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input kiosk_screen
+
+      # If motion cleared after timeout, turn screen OFF
+      - conditions:
+          - condition: state
+            entity_id: !input motion_sensor
+            state: "off"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input kiosk_screen
