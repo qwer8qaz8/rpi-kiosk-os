@@ -1,0 +1,10 @@
+[Unit]
+Description=Raspberry Pi Kiosk Automatic GitHub Updater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kiosk-config --update
+StandardOutput=journal
+StandardError=journal

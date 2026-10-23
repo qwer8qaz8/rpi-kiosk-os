@@ -1,5 +1,5 @@
 /**
- * RPi Kiosk Controller Card for Home Assistant
+ * RPi Kiosk Controller Card for Home Assistant (with PIN Code Protection & Lockdown)
  * A custom Lovelace card to manage your Raspberry Pi Kiosk directly from Home Assistant.
  */
 
@@ -23,9 +23,18 @@ class RPiKioskCard extends HTMLElement {
             </div>
 
             <!-- Screen Power Toggle -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
               <span style="font-weight: 500;">Screen Power</span>
               <mwc-switch id="kiosk-power-toggle"></mwc-switch>
+            </div>
+
+            <!-- Strict Lockdown Toggle -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+              <div>
+                <span style="font-weight: 500;">Strict URL Lockdown</span>
+                <div style="font-size: 0.8em; opacity: 0.6;">Blocks all external sites & DevTools</div>
+              </div>
+              <mwc-switch id="kiosk-lockdown-toggle"></mwc-switch>
             </div>
 
             <!-- Brightness Slider -->
@@ -55,17 +64,77 @@ class RPiKioskCard extends HTMLElement {
                 <mwc-button raised id="kiosk-btn-send-url">Send</mwc-button>
               </div>
             </div>
+
+            <!-- PIN Code Modal Dialog (if pin_code is configured) -->
+            <div id="kiosk-pin-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 99999; justify-content: center; align-items: center;">
+              <div style="background: var(--card-background-color, #1e293b); padding: 24px; border-radius: 12px; width: 280px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <h3 style="margin-bottom: 12px; font-size: 1.1em;">🔐 Enter Kiosk PIN</h3>
+                <input type="password" id="kiosk-pin-input" maxlength="8" style="width: 80%; font-size: 1.4em; text-align: center; letter-spacing: 0.3em; padding: 8px; border-radius: 8px; border: 1px solid var(--primary-color); margin-bottom: 16px; background: rgba(0,0,0,0.3); color: #fff;">
+                <div id="kiosk-pin-error" style="color: var(--error-color, #ef4444); font-size: 0.85em; margin-bottom: 12px; display: none;">Incorrect PIN!</div>
+                <div style="display: flex; justify-content: space-around;">
+                  <mwc-button id="kiosk-pin-cancel">Cancel</mwc-button>
+                  <mwc-button raised id="kiosk-pin-confirm">Unlock</mwc-button>
+                </div>
+              </div>
+            </div>
           </div>
         </ha-card>
       `;
 
       this.content = this.querySelector(".card-content");
+      this.pendingAction = null;
+
+      const runProtectedAction = (actionFn) => {
+        const requiredPin = this._config.pin_code;
+        if (!requiredPin) {
+          actionFn();
+          return;
+        }
+
+        const modal = this.querySelector("#kiosk-pin-modal");
+        const pinInput = this.querySelector("#kiosk-pin-input");
+        const errorMsg = this.querySelector("#kiosk-pin-error");
+        
+        modal.style.display = "flex";
+        pinInput.value = "";
+        errorMsg.style.display = "none";
+        pinInput.focus();
+
+        this.pendingAction = actionFn;
+      };
+
+      // PIN modal handlers
+      this.querySelector("#kiosk-pin-cancel").addEventListener("click", () => {
+        this.querySelector("#kiosk-pin-modal").style.display = "none";
+        this.pendingAction = null;
+      });
+
+      this.querySelector("#kiosk-pin-confirm").addEventListener("click", () => {
+        const pinInput = this.querySelector("#kiosk-pin-input");
+        const errorMsg = this.querySelector("#kiosk-pin-error");
+        if (pinInput.value === String(this._config.pin_code)) {
+          this.querySelector("#kiosk-pin-modal").style.display = "none";
+          if (this.pendingAction) this.pendingAction();
+          this.pendingAction = null;
+        } else {
+          errorMsg.style.display = "block";
+          pinInput.value = "";
+        }
+      });
 
       // Bind events
       const toggle = this.querySelector("#kiosk-power-toggle");
       toggle.addEventListener("change", (e) => {
         const entityId = this._config.switch_entity || "switch.rpi_kiosk_screen";
         this._hass.callService("switch", e.target.checked ? "turn_on" : "turn_off", { entity_id: entityId });
+      });
+
+      const lockdownToggle = this.querySelector("#kiosk-lockdown-toggle");
+      lockdownToggle.addEventListener("change", (e) => {
+        runProtectedAction(() => {
+          const entityId = this._config.lockdown_entity || "switch.rpi_kiosk_lockdown";
+          this._hass.callService("switch", lockdownToggle.checked ? "turn_on" : "turn_off", { entity_id: entityId });
+        });
       });
 
       const slider = this.querySelector("#kiosk-brightness-slider");
@@ -78,23 +147,29 @@ class RPiKioskCard extends HTMLElement {
       });
 
       this.querySelector("#kiosk-btn-reload").addEventListener("click", () => {
-        const entityId = this._config.reload_button || "button.rpi_kiosk_reload";
-        this._hass.callService("button", "press", { entity_id: entityId });
+        runProtectedAction(() => {
+          const entityId = this._config.reload_button || "button.rpi_kiosk_reload";
+          this._hass.callService("button", "press", { entity_id: entityId });
+        });
       });
 
       this.querySelector("#kiosk-btn-reboot").addEventListener("click", () => {
-        if (!confirm("Are you sure you want to reboot the Raspberry Pi kiosk?")) return;
-        const entityId = this._config.reboot_button || "button.rpi_kiosk_reboot";
-        this._hass.callService("button", "press", { entity_id: entityId });
+        runProtectedAction(() => {
+          if (!confirm("Are you sure you want to reboot the Raspberry Pi kiosk?")) return;
+          const entityId = this._config.reboot_button || "button.rpi_kiosk_reboot";
+          this._hass.callService("button", "press", { entity_id: entityId });
+        });
       });
 
       this.querySelector("#kiosk-btn-send-url").addEventListener("click", () => {
-        const url = this.querySelector("#kiosk-url-input").value.trim();
-        if (!url) return;
-        const deviceId = this._config.device_id || "rpi_kiosk";
-        this._hass.callService("mqtt", "publish", {
-          topic: `rpi_kiosk/${deviceId}/url/set`,
-          payload: url
+        runProtectedAction(() => {
+          const url = this.querySelector("#kiosk-url-input").value.trim();
+          if (!url) return;
+          const deviceId = this._config.device_id || "rpi_kiosk";
+          this._hass.callService("mqtt", "publish", {
+            topic: `rpi_kiosk/${deviceId}/url/set`,
+            payload: url
+          });
         });
       });
     }
@@ -106,6 +181,7 @@ class RPiKioskCard extends HTMLElement {
     if (!this._hass) return;
 
     const switchEntity = this._hass.states[this._config.switch_entity || "switch.rpi_kiosk_screen"];
+    const lockdownEntity = this._hass.states[this._config.lockdown_entity || "switch.rpi_kiosk_lockdown"];
     const tempEntity = this._hass.states[this._config.temperature_entity || "sensor.rpi_kiosk_cpu_temperature"];
     const brightEntity = this._hass.states[this._config.brightness_entity || "number.rpi_kiosk_brightness"];
 
@@ -119,6 +195,14 @@ class RPiKioskCard extends HTMLElement {
       if (badge) {
         badge.textContent = isTurnedOn ? "ONLINE (ON)" : "OFFLINE / SLEEP";
         badge.style.color = isTurnedOn ? "var(--success-color, #10b981)" : "var(--error-color, #ef4444)";
+      }
+    }
+
+    if (lockdownEntity) {
+      const isLocked = lockdownEntity.state === "on";
+      const toggle = this.querySelector("#kiosk-lockdown-toggle");
+      if (toggle && toggle.checked !== isLocked) {
+        toggle.checked = isLocked;
       }
     }
 
@@ -141,25 +225,26 @@ class RPiKioskCard extends HTMLElement {
     this._config = Object.assign({
       title: "RPi Kiosk",
       switch_entity: "switch.rpi_kiosk_screen",
+      lockdown_entity: "switch.rpi_kiosk_lockdown",
       brightness_entity: "number.rpi_kiosk_brightness",
       temperature_entity: "sensor.rpi_kiosk_cpu_temperature",
       reload_button: "button.rpi_kiosk_reload",
       reboot_button: "button.rpi_kiosk_reboot",
-      device_id: "rpi_kiosk"
+      device_id: "rpi_kiosk",
+      pin_code: "" // Optional PIN code protection (e.g. "1234")
     }, config);
   }
 
   getCardSize() {
-    return 3;
+    return 4;
   }
 }
 
 customElements.define("rpi-kiosk-card", RPiKioskCard);
 
-// Register with Home Assistant custom cards preview
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "rpi-kiosk-card",
   name: "Raspberry Pi Kiosk Controller",
-  description: "Control screen power, brightness, reload, and reboot your Raspberry Pi Kiosk."
+  description: "Control screen power, brightness, strict lockdown, reload, and reboot with optional PIN."
 });

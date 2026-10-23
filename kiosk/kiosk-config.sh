@@ -96,7 +96,15 @@ except Exception:
 }
 EOF
   cp /etc/chromium/policies/managed/kiosk_security_policy.json /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
+  save_config_val "lockdown" "true"
   echo -e "${GREEN}Enterprise security policy applied! Only Home Assistant URLs are permitted.${NC}"
+}
+
+remove_security_policy() {
+  require_root
+  rm -f /etc/chromium/policies/managed/kiosk_security_policy.json /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
+  save_config_val "lockdown" "false"
+  echo -e "${YELLOW}Lockdown disabled: standard browsing allowed.${NC}"
 }
 
 update_from_github() {
@@ -115,6 +123,8 @@ update_from_github() {
     apply_security_policy
     
     systemctl daemon-reload
+    systemctl enable kiosk-autoupdate.timer 2>/dev/null || true
+    systemctl start kiosk-autoupdate.timer 2>/dev/null || true
     systemctl restart kiosk-webui 2>/dev/null || true
     systemctl restart kiosk-mqtt 2>/dev/null || true
     systemctl restart kiosk-display 2>/dev/null || true
@@ -221,10 +231,21 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --lockdown)
-      apply_security_policy
+      require_root
+      mode="${2:-on}"
+      if [ "$mode" = "off" ] || [ "$mode" = "false" ] || [ "$mode" = "0" ]; then
+        remove_security_policy
+        if [ "$#" -ge 2 ]; then shift 2; else shift; fi
+      else
+        apply_security_policy
+        if [ "$mode" = "on" ] || [ "$mode" = "true" ] || [ "$mode" = "1" ]; then
+          shift 2
+        else
+          shift
+        fi
+      fi
       systemctl restart kiosk-display 2>/dev/null || true
       ACTION_PERFORMED=1
-      shift
       ;;
     --rotate)
       require_root

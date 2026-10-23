@@ -189,6 +189,7 @@ class KioskMQTTDaemon:
         
         # Subscriptions
         client.subscribe(f"{self.base_topic}/screen/set", qos=1)
+        client.subscribe(f"{self.base_topic}/lockdown/set", qos=1)
         client.subscribe(f"{self.base_topic}/brightness/set", qos=1)
         client.subscribe(f"{self.base_topic}/url/set", qos=1)
         client.subscribe(f"{self.base_topic}/reload/set", qos=1)
@@ -212,6 +213,16 @@ class KioskMQTTDaemon:
             elif payload.upper() in ["OFF", "FALSE", "0"]:
                 run_screen_cmd("off")
                 client.publish(f"{self.base_topic}/screen/state", "OFF", qos=1, retain=True)
+
+        elif topic == f"{self.base_topic}/lockdown/set":
+            if payload.upper() in ["ON", "TRUE", "1"]:
+                logger.info("Enabling Strict Lockdown via MQTT...")
+                subprocess.run(["sudo", "/usr/local/bin/kiosk-config", "--lockdown", "on"], capture_output=True)
+                client.publish(f"{self.base_topic}/lockdown/state", "ON", qos=1, retain=True)
+            elif payload.upper() in ["OFF", "FALSE", "0"]:
+                logger.info("Disabling Strict Lockdown via MQTT...")
+                subprocess.run(["sudo", "/usr/local/bin/kiosk-config", "--lockdown", "off"], capture_output=True)
+                client.publish(f"{self.base_topic}/lockdown/state", "OFF", qos=1, retain=True)
 
         elif topic == f"{self.base_topic}/brightness/set":
             try:
@@ -262,6 +273,23 @@ class KioskMQTTDaemon:
         self.client.publish(
             f"{self.prefix}/switch/{self.device_id}/screen/config",
             json.dumps(switch_disc), qos=1, retain=True
+        )
+
+        # 1b. Strict Lockdown Switch
+        lockdown_disc = {
+            "name": f"{self.device_name} Strict Lockdown",
+            "unique_id": f"{self.device_id}_lockdown",
+            "state_topic": f"{self.base_topic}/lockdown/state",
+            "command_topic": f"{self.base_topic}/lockdown/set",
+            "availability_topic": self.status_topic,
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "icon": "mdi:shield-lock",
+            "device": device_info
+        }
+        self.client.publish(
+            f"{self.prefix}/switch/{self.device_id}/lockdown/config",
+            json.dumps(lockdown_disc), qos=1, retain=True
         )
 
         # 2. Brightness Number
@@ -366,6 +394,9 @@ class KioskMQTTDaemon:
 
         screen_st = get_screen_state()
         self.client.publish(f"{self.base_topic}/screen/state", screen_st, qos=1, retain=True)
+
+        is_locked = Path("/etc/chromium/policies/managed/kiosk_security_policy.json").exists()
+        self.client.publish(f"{self.base_topic}/lockdown/state", "ON" if is_locked else "OFF", qos=1, retain=True)
 
         bright_val = get_screen_brightness()
         self.client.publish(f"{self.base_topic}/brightness/state", str(bright_val), qos=1, retain=True)

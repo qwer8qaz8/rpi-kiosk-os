@@ -368,6 +368,8 @@ systemctl daemon-reload
 systemctl enable kiosk-display.service
 systemctl enable kiosk-mqtt.service
 systemctl enable kiosk-webui.service
+systemctl enable kiosk-autoupdate.timer
+systemctl start kiosk-autoupdate.timer
 
 systemctl restart kiosk-webui.service
 systemctl restart kiosk-mqtt.service
