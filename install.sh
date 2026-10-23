@@ -322,6 +322,37 @@ chown -R "$TARGET_USER:$TARGET_USER" /opt/kiosk
 chown -R "$TARGET_USER:$TARGET_USER" /etc/kiosk
 chmod 664 /etc/kiosk/config.json
 
+# Enterprise Lockdown Policy for Chromium
+mkdir -p /etc/chromium/policies/managed /etc/opt/chrome/policies/managed
+cat << EOF > /etc/chromium/policies/managed/kiosk_security_policy.json
+{
+  "URLBlocklist": ["*"],
+  "URLAllowlist": [
+    "$HA_URL",
+    "http://192.168.*:8123/*",
+    "http://100.*:8123/*",
+    "http://umbrel.local:8123/*",
+    "http://homeassistant.local:8123/*",
+    "http://localhost:8080/*",
+    "http://127.0.0.1:8080/*"
+  ],
+  "DeveloperToolsAvailability": 2,
+  "DefaultPopupsSetting": 2,
+  "PrintingEnabled": false,
+  "BrowserAddPersonEnabled": false,
+  "BrowserGuestModeEnabled": false,
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "TranslateEnabled": false,
+  "EditBookmarksEnabled": false,
+  "BookmarkBarEnabled": false,
+  "ShowHomeButton": false,
+  "ExtensionInstallBlocklist": ["*"]
+}
+EOF
+cp /etc/chromium/policies/managed/kiosk_security_policy.json /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
+
 # Customize Systemd units for the detected user and UID
 echo -e "${GREEN}[5/6] Registering Systemd Services...${NC}"
 for svc in kiosk-display.service kiosk-mqtt.service kiosk-webui.service; do

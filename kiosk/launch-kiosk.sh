@@ -91,6 +91,46 @@ echo "[kiosk] Using browser binary: $CHROMIUM_BIN"
 # Create ramdisk cache directory to avoid wearing out SD card
 mkdir -p /tmp/chromium-cache 2>/dev/null || true
 
+# Extract allowed host from DASHBOARD_URL for enterprise URL lockdown
+ALLOWED_HOST=$(python3 -c "
+import urllib.parse
+try:
+    p = urllib.parse.urlparse('$DASHBOARD_URL')
+    print(f'{p.scheme}://{p.netloc}/*')
+except Exception:
+    print('http://*:8123/*')
+")
+
+# Ensure enterprise lockdown policy exists
+if [ -d /etc/chromium/policies/managed ] || sudo mkdir -p /etc/chromium/policies/managed 2>/dev/null; then
+  sudo tee /etc/chromium/policies/managed/kiosk_security_policy.json >/dev/null << EOF 2>/dev/null || true
+{
+  "URLBlocklist": ["*"],
+  "URLAllowlist": [
+    "$ALLOWED_HOST",
+    "http://192.168.*:8123/*",
+    "http://umbrel.local:8123/*",
+    "http://homeassistant.local:8123/*",
+    "http://localhost:8080/*",
+    "http://127.0.0.1:8080/*"
+  ],
+  "DeveloperToolsAvailability": 2,
+  "DefaultPopupsSetting": 2,
+  "PrintingEnabled": false,
+  "BrowserAddPersonEnabled": false,
+  "BrowserGuestModeEnabled": false,
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "TranslateEnabled": false,
+  "EditBookmarksEnabled": false,
+  "BookmarkBarEnabled": false,
+  "ShowHomeButton": false,
+  "ExtensionInstallBlocklist": ["*"]
+}
+EOF
+fi
+
 # Launch Chromium locked in Kiosk mode
 exec "$CHROMIUM_BIN" \
   --kiosk \
@@ -103,6 +143,7 @@ exec "$CHROMIUM_BIN" \
   --enable-features=OverlayScrollbar \
   --disable-features=Translate \
   --disable-session-crashed-bubble \
+  --disable-context-menu \
   --autoplay-policy=no-user-gesture-required \
   --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
   --password-store=basic \
