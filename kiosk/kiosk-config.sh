@@ -150,6 +150,56 @@ EOF
   echo -e "${CYAN}==================================================================${NC}\n"
 }
 
+set_static_ip() {
+  require_root
+  local target_ip="$1"
+  local gateway="${2:-}"
+  local dns="${3:-1.1.1.1 8.8.8.8}"
+
+  if [ -z "$gateway" ]; then
+    gateway=$(ip route 2>/dev/null | grep default | awk '{print $3}' | head -n 1 || echo "192.168.86.1")
+  fi
+
+  echo -e "\n${CYAN}Configuring Static IP: ${BOLD}$target_ip${NC} (Gateway: $gateway)..."
+
+  # NetworkManager (Debian Bookworm default)
+  if command -v nmcli >/dev/null 2>&1; then
+    local conn_name
+    conn_name=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | head -n 1 | cut -d: -f1)
+    if [ -n "$conn_name" ]; then
+      nmcli connection modify "$conn_name" \
+        ipv4.addresses "$target_ip/24" \
+        ipv4.gateway "$gateway" \
+        ipv4.dns "$dns" \
+        ipv4.method manual 2>/dev/null || true
+      nmcli connection up "$conn_name" 2>/dev/null || true
+      echo -e "${GREEN}Static IP configured via NetworkManager on [$conn_name].${NC}"
+      generate_ha_snippet
+      return 0
+    fi
+  fi
+
+  # Fallback for dhcpcd.conf (Debian Bullseye / legacy)
+  if [ -f /etc/dhcpcd.conf ]; then
+    local iface
+    iface=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1 || echo "eth0")
+    cat << EOF >> /etc/dhcpcd.conf
+
+# Static IP for Kiosk
+interface $iface
+static ip_address=$target_ip/24
+static routers=$gateway
+static domain_name_servers=$dns
+EOF
+    systemctl restart dhcpcd 2>/dev/null || true
+    echo -e "${GREEN}Static IP configured in /etc/dhcpcd.conf.${NC}"
+    generate_ha_snippet
+    return 0
+  fi
+
+  echo -e "${YELLOW}Could not automatically configure static IP via nmcli or dhcpcd. Setting a DHCP reservation in your router is recommended.${NC}"
+}
+
 # Parse Command-Line Flags
 ACTION_PERFORMED=0
 while [[ $# -gt 0 ]]; do
@@ -193,6 +243,12 @@ while [[ $# -gt 0 ]]; do
       ACTION_PERFORMED=1
       shift
       ;;
+    --static-ip)
+      require_root
+      set_static_ip "$2" "$3"
+      ACTION_PERFORMED=1
+      shift 2
+      ;;
     --snippet)
       generate_ha_snippet
       ACTION_PERFORMED=1
@@ -215,6 +271,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --rotate <0|90|180|270> Rotate screen"
       echo "  --brightness <0-100>   Set backlight brightness percentage"
       echo "  --lockdown             Apply strict enterprise URL & shortcut lockdown"
+      echo "  --static-ip <IP>       Set static IP address on this Raspberry Pi"
       echo "  --update               Check GitHub and update kiosk software"
       echo "  --snippet              Print Home Assistant trusted_networks YAML snippet"
       echo "  --reload               Restart kiosk browser display"
@@ -245,9 +302,10 @@ echo "4) Adjust Screen Brightness (0-100%)"
 echo "5) Rotate Display Orientation"
 echo "6) Reload Kiosk Display"
 echo "7) Check for Updates from GitHub"
-echo "8) Exit"
+echo "8) Set Static IP Address on Pi"
+echo "9) Exit"
 echo ""
-read -r -p "Select an option [1-8]: " CHOICE
+read -r -p "Select an option [1-9]: " CHOICE
 
 case "$CHOICE" in
   1)
@@ -294,6 +352,12 @@ case "$CHOICE" in
     ;;
   7)
     update_from_github
+    ;;
+  8)
+    cur_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    read -r -p "Enter desired static IP address [$cur_ip]: " S_IP
+    S_IP="${S_IP:-$cur_ip}"
+    set_static_ip "$S_IP"
     ;;
   *)
     echo "Exiting."
