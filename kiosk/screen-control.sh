@@ -2,9 +2,10 @@
 # ==============================================================================
 # Screen Control Utility for Cage / Wayland Kiosk
 # Handles screen power (ON/OFF), brightness, rotation, and status detection across:
-# 1. Wayland outputs (via wlr-randr)
+# 1. Wayland outputs (via wlr-randr with auto-detected Wayland socket)
 # 2. Linux sysfs backlight (/sys/class/backlight/*)
-# 3. Raspberry Pi firmware (vcgencmd display_power)
+# 3. Linux framebuffer blanking (/sys/class/graphics/fb*/blank)
+# 4. Raspberry Pi firmware (vcgencmd display_power)
 # ==============================================================================
 
 set -o pipefail
@@ -13,9 +14,37 @@ CONFIG_FILE="/etc/kiosk/config.json"
 ACTION="${1:-status}"
 ARG2="$2"
 
-get_active_wayland_output() {
+# Ensure Wayland session environment is present even when invoked from background systemd service
+setup_wayland_env() {
+  if [ -z "$XDG_RUNTIME_DIR" ]; then
+    for uid_dir in /run/user/*; do
+      if [ -d "$uid_dir" ]; then
+        for sock in "$uid_dir"/wayland-*; do
+          if [ -S "$sock" ]; then
+            export XDG_RUNTIME_DIR="$uid_dir"
+            export WAYLAND_DISPLAY="$(basename "$sock")"
+            break 2
+          fi
+        done
+      fi
+    done
+  fi
+
+  if [ -z "$WAYLAND_DISPLAY" ] && [ -n "$XDG_RUNTIME_DIR" ]; then
+    for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+      if [ -S "$sock" ]; then
+        export WAYLAND_DISPLAY="$(basename "$sock")"
+        break
+      fi
+    done
+  fi
+}
+
+setup_wayland_env
+
+get_active_wayland_outputs() {
   if command -v wlr-randr >/dev/null 2>&1; then
-    wlr-randr 2>/dev/null | grep -E '^[A-Za-z0-9-]+' | awk '{print $1}' | head -n 1
+    wlr-randr 2>/dev/null | grep -E '^[A-Za-z0-9-]+' | awk '{print $1}'
   fi
 }
 
@@ -34,15 +63,13 @@ set_backlight_power() {
 
 set_brightness() {
   local percent="$1"
-  # Clamp 1-100
-  if [ "$percent" -lt 1 ]; then percent=1; fi
+  if [ "$percent" -lt 0 ]; then percent=0; fi
   if [ "$percent" -gt 100 ]; then percent=100; fi
 
   for bl in /sys/class/backlight/*; do
     if [ -d "$bl" ] && [ -f "$bl/max_brightness" ]; then
       max_b=$(cat "$bl/max_brightness" 2>/dev/null || echo 255)
       calc_b=$(( (max_b * percent) / 100 ))
-      if [ "$calc_b" -lt 1 ]; then calc_b=1; fi
 
       if [ -w "$bl/brightness" ]; then
         echo "$calc_b" > "$bl/brightness" 2>/dev/null || true
@@ -52,7 +79,6 @@ set_brightness() {
     fi
   done
 
-  # Save to config
   if [ -f "$CONFIG_FILE" ]; then
     python3 -c "
 import json
@@ -80,7 +106,6 @@ get_brightness() {
       fi
     fi
   done
-  # Fallback to config
   if [ -f "$CONFIG_FILE" ]; then
     python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('brightness', 100))" 2>/dev/null && return
   fi
@@ -89,21 +114,36 @@ get_brightness() {
 
 set_screen_power() {
   local state="$1" # "on" or "off"
-  local output
-  output=$(get_active_wayland_output)
+  local outputs
+  outputs=$(get_active_wayland_outputs)
 
   if [ "$state" = "on" ]; then
     # 1. Backlight
     set_backlight_power 0
-    # 2. wlr-randr if running under Cage
-    if [ -n "$output" ] && command -v wlr-randr >/dev/null 2>&1; then
-      wlr-randr --output "$output" --on 2>/dev/null || true
+    # Restore brightness from config or default to 100
+    b_val=$(get_brightness)
+    set_brightness "$b_val"
+
+    # 2. wlr-randr DPMS / power on all outputs
+    if command -v wlr-randr >/dev/null 2>&1; then
+      for out in $outputs; do
+        wlr-randr --output "$out" --on 2>/dev/null || true
+      done
     fi
-    # 3. vcgencmd for HDMI if available
+
+    # 3. Framebuffer unblank
+    for fb in /sys/class/graphics/fb*; do
+      if [ -f "$fb/blank" ]; then
+        sudo tee "$fb/blank" >/dev/null <<< 0 2>/dev/null || echo 0 > "$fb/blank" 2>/dev/null || true
+      fi
+    done
+
+    # 4. vcgencmd if available
     if command -v vcgencmd >/dev/null 2>&1; then
       vcgencmd display_power 1 2>/dev/null || true
     fi
-    # Update state in config
+
+    # Update config
     if [ -f "$CONFIG_FILE" ]; then
       python3 -c "
 import json
@@ -122,15 +162,27 @@ except Exception:
   elif [ "$state" = "off" ]; then
     # 1. Backlight
     set_backlight_power 1
-    # 2. wlr-randr
-    if [ -n "$output" ] && command -v wlr-randr >/dev/null 2>&1; then
-      wlr-randr --output "$output" --off 2>/dev/null || true
+
+    # 2. wlr-randr DPMS / power off all outputs
+    if command -v wlr-randr >/dev/null 2>&1; then
+      for out in $outputs; do
+        wlr-randr --output "$out" --off 2>/dev/null || true
+      done
     fi
-    # 3. vcgencmd for HDMI
+
+    # 3. Framebuffer blank
+    for fb in /sys/class/graphics/fb*; do
+      if [ -f "$fb/blank" ]; then
+        sudo tee "$fb/blank" >/dev/null <<< 1 2>/dev/null || echo 1 > "$fb/blank" 2>/dev/null || true
+      fi
+    done
+
+    # 4. vcgencmd if available
     if command -v vcgencmd >/dev/null 2>&1; then
       vcgencmd display_power 0 2>/dev/null || true
     fi
-    # Update state in config
+
+    # Update config
     if [ -f "$CONFIG_FILE" ]; then
       python3 -c "
 import json
@@ -149,9 +201,9 @@ except Exception:
 }
 
 rotate_screen() {
-  local rotation="$1" # normal, 90, 180, 270 (or 90-cw, etc.)
+  local rotation="$1"
   local output
-  output=$(get_active_wayland_output)
+  output=$(get_active_wayland_outputs | head -n 1)
 
   case "$rotation" in
     90|90-cw)
@@ -175,7 +227,6 @@ rotate_screen() {
     echo "No active Wayland output found to rotate"
   fi
 
-  # Update config
   if [ -f "$CONFIG_FILE" ]; then
     python3 -c "
 import json
@@ -238,7 +289,7 @@ case "$ACTION" in
     get_status
     ;;
   *)
-    echo "Usage: $0 {on|off|toggle|brightness <1-100>|get_brightness|rotate <normal|90|180|270>|status}"
+    echo "Usage: $0 {on|off|toggle|brightness <0-100>|get_brightness|rotate <normal|90|180|270>|status}"
     exit 1
     ;;
 esac
