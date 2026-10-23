@@ -17,7 +17,7 @@
 Boot up a fresh **Raspberry Pi OS Lite (64-bit)**, connect via SSH, and paste:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | sudo bash
 ```
 
 ---
@@ -26,7 +26,7 @@ curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.
 You can pass pre-filled flags directly through curl to bypass interactive prompts completely:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | bash -s -- \
+curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | sudo bash -s -- \
   --url "http://homeassistant.local:8123/lovelace-kiosk/0?kiosk" \
   --orientation "normal" \
   --kiosk-user-id "YOUR_HA_USER_ID" \
@@ -159,7 +159,7 @@ ssh pi@192.168.1.50
 Run the installer:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | sudo bash
 ```
 
 ---

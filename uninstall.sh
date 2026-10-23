@@ -19,7 +19,11 @@ echo -e "${NC}"
 
 if [ "$EUID" -ne 0 ]; then
   echo -e "${YELLOW}Root privileges required. Re-running with sudo...${NC}"
-  exec sudo -E bash "$0" "$@"
+  if [ -f "$0" ] && [ "$0" != "bash" ] && [ "$0" != "/bin/bash" ] && [ "$0" != "/usr/bin/bash" ] && [ "$0" != "-bash" ]; then
+    exec sudo -E bash "$0" "$@"
+  else
+    exec sudo -E bash -c "$(curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/uninstall.sh)"
+  fi
 fi
 
 read -r -p "Are you sure you want to completely uninstall the Kiosk environment? [y/N]: " CONFIRM

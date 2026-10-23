@@ -120,8 +120,15 @@ echo -e "${NC}"
 
 # Check for root / sudo privileges
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${YELLOW}Root privileges required. Re-running with sudo...${NC}"
-  exec sudo -E bash "$0" "$@"
+  echo -e "${YELLOW}Root privileges required. Elevating with sudo...${NC}"
+  if [ -f "$0" ] && [ "$0" != "bash" ] && [ "$0" != "/bin/bash" ] && [ "$0" != "/usr/bin/bash" ] && [ "$0" != "-bash" ]; then
+    exec sudo -E bash "$0" "$@"
+  else
+    TMP_INSTALLER="/tmp/rpi-kiosk-installer.sh"
+    curl -sSL "https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh" -o "$TMP_INSTALLER"
+    chmod +x "$TMP_INSTALLER"
+    exec sudo -E bash "$TMP_INSTALLER" "$@"
+  fi
 fi
 
 # Operating system check
