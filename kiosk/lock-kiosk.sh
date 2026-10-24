@@ -15,10 +15,10 @@ if [ -f /opt/kiosk/kiosk-config.sh ]; then
 fi
 
 # Terminate all desktop workstation applications
-pkill -f waybar 2>/dev/null || true
-pkill -f swaybg 2>/dev/null || true
-pkill -f foot 2>/dev/null || true
-pkill -f 'chromium' 2>/dev/null || true
+pkill -9 -f waybar 2>/dev/null || true
+pkill -9 -f swaybg 2>/dev/null || true
+pkill -9 -f foot 2>/dev/null || true
+pkill -9 -f chromium 2>/dev/null || true
 sleep 0.5
 
 # Re-launch single-app fullscreen kiosk

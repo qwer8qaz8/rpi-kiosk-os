@@ -316,6 +316,7 @@ chmod +x /opt/kiosk/kiosk-mqtt.py
 chmod +x /opt/kiosk/start-desktop.sh 2>/dev/null || true
 chmod +x /opt/kiosk/lock-kiosk.sh 2>/dev/null || true
 chmod +x /opt/kiosk/toggle-admin.sh 2>/dev/null || true
+chmod +x /opt/kiosk/prompt-exit.sh 2>/dev/null || true
 
 # Deploy labwc and waybar configurations to /etc/kiosk
 mkdir -p /etc/kiosk/labwc /etc/kiosk/waybar

@@ -1,27 +1,46 @@
 [
   {
-    "name": "macos-topbar",
+    "name": "kiosk-panel",
     "layer": "top",
-    "position": "top",
-    "height": 30,
+    "position": "bottom",
+    "height": 46,
     "modules-left": [
-      "custom/apple",
-      "custom/appname",
-      "custom/screencontrol"
+      "custom/launcher",
+      "custom/dock-chrome",
+      "custom/dock-settings",
+      "custom/dock-camera",
+      "custom/dock-terminal"
     ],
     "modules-right": [
+      "custom/screencontrol",
       "custom/inputmode",
       "clock",
-      "custom/lock"
+      "custom/exitkiosk"
     ],
-    "custom/apple": {
-      "format": "  ",
-      "tooltip": false,
-      "on-click": "chromium --app='http://127.0.0.1:8080/' --window-size=920,680"
+    "custom/launcher": {
+      "format": " ⚡ KioskOS ",
+      "tooltip": "KioskOS System Menu",
+      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/' --window-size=920,680"
     },
-    "custom/appname": {
-      "format": "<b>Kiosk OS</b>",
-      "tooltip": false
+    "custom/dock-chrome": {
+      "format": " 🌐 Chromium ",
+      "tooltip": "Google Chrome Web Browser",
+      "on-click": "chromium --ozone-platform=wayland 'chrome://newtab'"
+    },
+    "custom/dock-settings": {
+      "format": " ⚙️ Control Center ",
+      "tooltip": "Kiosk Settings",
+      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/' --window-size=920,680"
+    },
+    "custom/dock-camera": {
+      "format": " 📷 Camera &amp; Touch ",
+      "tooltip": "Camera Optical Touchscreen &amp; Calibration",
+      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/#display' --window-size=920,680"
+    },
+    "custom/dock-terminal": {
+      "format": " 💻 Terminal ",
+      "tooltip": "Linux Terminal Console",
+      "on-click": "foot"
     },
     "custom/screencontrol": {
       "format": " 💡 Screen ",
@@ -30,55 +49,18 @@
     },
     "custom/inputmode": {
       "format": " 🖥️ Display Mode ",
-      "tooltip": "Configure Touchscreen / Camera Touch",
-      "on-click": "chromium --app='http://127.0.0.1:8080/#display' --window-size=920,680"
+      "tooltip": "Touchscreen / Non-Touch Configuration",
+      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/#display' --window-size=920,680"
     },
     "clock": {
       "format": "{:%a %b %d  %I:%M %p}",
       "tooltip-format": "{:%Y-%m-%d | %H:%M:%S}"
     },
-    "custom/lock": {
-      "format": " 🔒 Lock Kiosk ",
-      "tooltip": "Exit Desktop & Return to Fullscreen Kiosk",
-      "on-click": "/opt/kiosk/lock-kiosk.sh"
-    }
-  },
-  {
-    "name": "macos-dock",
-    "layer": "top",
-    "position": "bottom",
-    "height": 72,
-    "modules-center": [
-      "custom/dock-chrome",
-      "custom/dock-settings",
-      "custom/dock-camera",
-      "custom/dock-terminal",
-      "custom/dock-lock"
-    ],
-    "custom/dock-chrome": {
-      "format": " 🌐 Chrome ",
-      "tooltip": "Google Chrome Web Browser",
-      "on-click": "chromium --ozone-platform=wayland 'chrome://newtab'"
-    },
-    "custom/dock-settings": {
-      "format": " ⚙️ Settings ",
-      "tooltip": "Kiosk Control Center",
-      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/' --window-size=920,680"
-    },
-    "custom/dock-camera": {
-      "format": " 📷 Camera & Touch ",
-      "tooltip": "Camera Optical Touchscreen & Calibration",
-      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/#display' --window-size=920,680"
-    },
-    "custom/dock-terminal": {
-      "format": " 💻 Terminal ",
-      "tooltip": "Linux Shell Console",
-      "on-click": "foot"
-    },
-    "custom/dock-lock": {
-      "format": " 🔒 Lock ",
-      "tooltip": "Lock Desktop Mode",
-      "on-click": "/opt/kiosk/lock-kiosk.sh"
+    "custom/exitkiosk": {
+      "format": " 🔒 Exit to Kiosk ",
+      "tooltip": "Click to exit (with countdown) or hold to exit immediately",
+      "on-click": "/opt/kiosk/prompt-exit.sh",
+      "on-click-right": "/opt/kiosk/lock-kiosk.sh"
     }
   }
 ]

@@ -238,6 +238,12 @@ except Exception:
       setterm --blank force 2>/dev/null || true
     fi
 
+    # Auto-lock: If monitor turns off while in Admin Desktop Mode, auto-lock back to Kiosk immediately
+    if [ -f /tmp/kiosk-admin-workstation ]; then
+      echo "[screen-control] Monitor turned off: Auto-locking Admin Mode back to Kiosk..."
+      /opt/kiosk/lock-kiosk.sh >/dev/null 2>&1 &
+    fi
+
     if [ -f "$CONFIG_FILE" ]; then
       python3 -c "
 import json

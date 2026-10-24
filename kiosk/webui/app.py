@@ -620,6 +620,39 @@ def api_admin_disable_workstation():
         return jsonify({"success": False, "error": str(e)}), 500
     return jsonify({"success": True, "mode": "kiosk"})
 
+@app.route("/api/admin/prompt_exit", methods=["POST", "OPTIONS"])
+def api_admin_prompt_exit():
+    if request.method == "OPTIONS":
+        return "", 200
+    try:
+        req = urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=1)
+        pages = json.loads(req.read().decode())
+        for p in pages:
+            if p.get("type") == "page" and "id" in p:
+                pid = p["id"]
+                # Use evaluate to call window.openKioskExitDialog()
+                eval_script = "window.openKioskExitDialog && window.openKioskExitDialog();"
+                eval_url = f"http://127.0.0.1:9222/json/evaluate?expr={urllib.parse.quote(eval_script)}"
+                try:
+                    urllib.request.urlopen(eval_url, timeout=1)
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Error triggering exit dialog: {e}")
+    return jsonify({"success": True, "prompted": True})
+
+@app.route("/api/admin/trigger_listener", methods=["POST", "OPTIONS"])
+def api_admin_trigger_listener():
+    if request.method == "OPTIONS":
+        return "", 200
+    try:
+        eval_script = "window.triggerSecretListener && window.triggerSecretListener();"
+        eval_url = f"http://127.0.0.1:9222/json/evaluate?expr={urllib.parse.quote(eval_script)}"
+        urllib.request.urlopen(eval_url, timeout=1)
+    except Exception as e:
+        logger.warning(f"Error triggering listener: {e}")
+    return jsonify({"success": True})
+
 @app.route("/api/screen/input_mode", methods=["GET", "POST", "OPTIONS"])
 def api_screen_input_mode():
     if request.method == "OPTIONS":

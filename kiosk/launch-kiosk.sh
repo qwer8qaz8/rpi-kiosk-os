@@ -426,6 +426,129 @@ function openPasswordModal() {
     setTimeout(() => input.focus(), 60);
 }
 
+let exitHoldTimer = null;
+let exitHoldStart = 0;
+let exitHoldInterval = null;
+let exitHoldOverlayEl = null;
+let exitCountdownTimer = null;
+let exitCountdownModalEl = null;
+
+function showExitHoldOverlay(progress) {
+    if (!exitHoldOverlayEl) {
+        exitHoldOverlayEl = document.createElement('div');
+        exitHoldOverlayEl.id = 'kiosk-exit-hold-overlay';
+        exitHoldOverlayEl.style.cssText = `
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 2147483647; background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 16px;
+            padding: 14px 24px; display: flex; flex-direction: column; align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(239, 68, 68, 0.3);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #fff; min-width: 320px;
+        `;
+        document.body.appendChild(exitHoldOverlayEl);
+    }
+    exitHoldOverlayEl.style.display = 'flex';
+    exitHoldOverlayEl.innerHTML = `
+        <div style="font-size: 13px; font-weight: 700; color: #f87171; margin-bottom: 6px; letter-spacing: 0.5px;">
+            🔒 Exit to Kiosk Mode
+        </div>
+        <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 8px;">
+            Keep holding to exit immediately...
+        </div>
+        <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 6px; overflow: hidden;">
+            <div style="width: ${progress}%; height: 100%; background: linear-gradient(90deg, #ef4444, #f87171); border-radius: 6px; transition: width 0.08s linear;"></div>
+        </div>
+    `;
+}
+
+function hideExitHoldOverlay() {
+    if (exitHoldOverlayEl) exitHoldOverlayEl.style.display = 'none';
+    if (exitHoldInterval) clearInterval(exitHoldInterval);
+    if (exitHoldTimer) clearTimeout(exitHoldTimer);
+    exitHoldInterval = null;
+    exitHoldTimer = null;
+    exitHoldStart = 0;
+}
+
+function showExitCountdownDialog() {
+    hideExitHoldOverlay();
+    if (!exitCountdownModalEl) {
+        exitCountdownModalEl = document.createElement('div');
+        exitCountdownModalEl.id = 'kiosk-exit-countdown-modal';
+        exitCountdownModalEl.style.cssText = `
+            position: fixed; inset: 0; z-index: 2147483647;
+            background: rgba(3, 7, 18, 0.85); backdrop-filter: blur(20px);
+            display: flex; align-items: center; justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        `;
+        document.body.appendChild(exitCountdownModalEl);
+    }
+
+    let count = 5;
+    exitCountdownModalEl.style.display = 'flex';
+    const updateContent = () => {
+        exitCountdownModalEl.innerHTML = `
+            <div style="background: rgba(15, 23, 42, 0.96); border: 1px solid rgba(255,255,255,0.14); border-radius: 20px; width: 400px; max-width: 92vw; padding: 32px 28px; box-shadow: 0 25px 60px rgba(0,0,0,0.85); text-align: center; color: #fff;">
+                <div style="font-size: 40px; margin-bottom: 12px;">🔒</div>
+                <h2 style="font-size: 20px; font-weight: 700; margin: 0 0 8px 0;">Exit to Kiosk Mode?</h2>
+                <p style="font-size: 13px; color: #94a3b8; margin: 0 0 20px 0; line-height: 1.5;">
+                    Do you want to return to fullscreen Kiosk Mode?<br>
+                    Auto-locking in <b style="color: #38bdf8; font-size: 16px;">${count}</b> seconds...
+                </p>
+                <div style="display: flex; gap: 12px;">
+                    <button id="kiosk-cancel-exit-btn" style="flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; font-size: 13px; font-weight: 600; cursor: pointer;">Cancel (Esc)</button>
+                    <button id="kiosk-confirm-exit-btn" style="flex: 1; padding: 12px; border-radius: 10px; border: none; background: #dc2626; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">Lock Now (Enter)</button>
+                </div>
+            </div>
+        `;
+        const confirmBtn = exitCountdownModalEl.querySelector('#kiosk-confirm-exit-btn');
+        const cancelBtn = exitCountdownModalEl.querySelector('#kiosk-cancel-exit-btn');
+        if (confirmBtn) confirmBtn.onclick = () => { doLockNow(); };
+        if (cancelBtn) cancelBtn.onclick = () => { cancelCountdown(); };
+    };
+
+    const doLockNow = () => {
+        if (exitCountdownTimer) clearInterval(exitCountdownTimer);
+        exitCountdownModalEl.style.display = 'none';
+        lockKioskNow();
+    };
+
+    const cancelCountdown = () => {
+        if (exitCountdownTimer) clearInterval(exitCountdownTimer);
+        exitCountdownModalEl.style.display = 'none';
+    };
+
+    updateContent();
+    if (exitCountdownTimer) clearInterval(exitCountdownTimer);
+    exitCountdownTimer = setInterval(() => {
+        count--;
+        if (count <= 0) {
+            clearInterval(exitCountdownTimer);
+            doLockNow();
+        } else {
+            updateContent();
+        }
+    }, 1000);
+
+    const keyHandler = (e) => {
+        if (exitCountdownModalEl.style.display !== 'none') {
+            if (e.key === 'Enter') { e.preventDefault(); doLockNow(); window.removeEventListener('keydown', keyHandler); }
+            if (e.key === 'Escape') { e.preventDefault(); cancelCountdown(); window.removeEventListener('keydown', keyHandler); }
+        }
+    };
+    window.addEventListener('keydown', keyHandler);
+}
+
+window.openKioskExitDialog = showExitCountdownDialog;
+window.triggerSecretListener = function() {
+    secretListenMode = true;
+    secretBuffer = '';
+    showCornerIndicator('listening');
+    if (secretListenTimer) clearTimeout(secretListenTimer);
+    secretListenTimer = setTimeout(() => hideCornerIndicator(), 10000);
+};
+
 // 1. Advanced Keyboard Shortcuts & Secret Sequence Handler
 window.addEventListener('keydown', function(e) {
     // If user presses Escape while listening in corner: cancel listening mode
@@ -437,23 +560,49 @@ window.addEventListener('keydown', function(e) {
         return false;
     }
 
-    // A) Admin Unlock Shortcut: ONLY Ctrl + Alt + = (or +)
+    const isExitShortcut = (e.ctrlKey && e.altKey && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.code === 'NumpadEqual' || e.code === 'NumpadAdd')) ||
+                           (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === '=' || e.code === 'Equal'));
+
+    // Check if in Admin Desktop Mode
+    const inAdminMode = window.location.pathname.includes('/desktop') ||
+                        window.location.port === '8080' ||
+                        window.__kiosk_workstation_active ||
+                        document.cookie.includes('kiosk_admin=1');
+
+    if (inAdminMode && isExitShortcut) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        if (!exitHoldStart && !e.repeat) {
+            exitHoldStart = Date.now();
+            showExitHoldOverlay(5);
+            let start = Date.now();
+            if (exitHoldInterval) clearInterval(exitHoldInterval);
+            exitHoldInterval = setInterval(() => {
+                let elapsed = Date.now() - start;
+                let pct = Math.min(100, Math.floor((elapsed / 2000) * 100));
+                showExitHoldOverlay(pct);
+                if (elapsed >= 2000) {
+                    hideExitHoldOverlay();
+                    lockKioskNow();
+                }
+            }, 50);
+        }
+        return false;
+    }
+
+    // A) Admin Unlock Shortcut in Kiosk Mode: ONLY Ctrl + Alt + = (or +)
     const isShortcut = e.ctrlKey && e.altKey && !e.shiftKey && (
         e.key === '=' || e.key === '+' ||
         e.code === 'Equal' || e.code === 'NumpadEqual' || e.code === 'NumpadAdd' ||
         e.keyCode === 187 || e.keyCode === 61 || e.keyCode === 107
     );
 
-    if (isShortcut) {
+    if (isShortcut && !inAdminMode) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-
-        // If in Admin Desktop mode, exiting desktop mode:
-        if (window.location.pathname.includes('/desktop') || window.__kiosk_workstation_active) {
-            lockKioskNow();
-            return false;
-        }
 
         // Toggle Secret Listen Mode:
         if (secretListenMode) {
@@ -604,6 +753,15 @@ window.addEventListener('keypress', function(e) {
 }, true);
 
 window.addEventListener('keyup', function(e) {
+    if (exitHoldStart) {
+        const heldDuration = Date.now() - exitHoldStart;
+        hideExitHoldOverlay();
+        // If released before 2 seconds: user tapped/released early -> show countdown dialog!
+        if (heldDuration < 2000) {
+            showExitCountdownDialog();
+        }
+    }
+
     if (secretListenMode) {
         e.preventDefault();
         e.stopPropagation();
