@@ -240,6 +240,11 @@ fi
 
 apt-get install -y --no-install-recommends \
   cage \
+  labwc \
+  waybar \
+  foot \
+  swaybg \
+  wtype \
   "$CHROMIUM_PKG" \
   wlr-randr \
   gammastep \
@@ -308,6 +313,14 @@ fi
 chmod +x /opt/kiosk/launch-kiosk.sh
 chmod +x /opt/kiosk/screen-control.sh
 chmod +x /opt/kiosk/kiosk-mqtt.py
+chmod +x /opt/kiosk/start-desktop.sh 2>/dev/null || true
+chmod +x /opt/kiosk/lock-kiosk.sh 2>/dev/null || true
+chmod +x /opt/kiosk/toggle-admin.sh 2>/dev/null || true
+
+# Deploy labwc and waybar configurations to /etc/kiosk
+mkdir -p /etc/kiosk/labwc /etc/kiosk/waybar
+cp -r /opt/kiosk/labwc/* /etc/kiosk/labwc/ 2>/dev/null || true
+cp -r /opt/kiosk/waybar/* /etc/kiosk/waybar/ 2>/dev/null || true
 chmod +x /opt/kiosk/webui/app.py
 chmod +x /opt/kiosk/kiosk-config.sh 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk-config 2>/dev/null || true

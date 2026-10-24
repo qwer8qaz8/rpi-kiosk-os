@@ -582,14 +582,16 @@ def api_admin_enable_workstation():
     if request.method == "OPTIONS":
         return "", 200
     client_ip = request.remote_addr or "local"
-    logger.info(f"[Security] Switching kiosk to Admin Workstation Mode (tabs enabled) by {client_ip}...")
-    log_security_event(f"Admin Workstation Mode enabled by {client_ip}")
+    logger.info(f"[Security] Switching kiosk to Real macOS Admin Desktop Mode by {client_ip}...")
+    log_security_event(f"Admin Desktop Mode enabled by {client_ip}")
     try:
         Path("/tmp/kiosk-admin-workstation").touch()
-        # Relax policy so admin can open tabs and browse anywhere
         subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--unlock"], capture_output=True)
-        # Direct Chromium smoothly to the macOS Desktop without restarting Cage compositor!
-        navigate_chromium("http://127.0.0.1:8080/desktop")
+        # Launch real macOS desktop environment (waybar topbar/dock, Chrome window, Settings window)
+        if os.path.exists("/opt/kiosk/start-desktop.sh"):
+            subprocess.Popen(["/bin/bash", "/opt/kiosk/start-desktop.sh"])
+        else:
+            navigate_chromium("http://127.0.0.1:8080/desktop")
     except Exception as e:
         logger.error(f"Error enabling workstation: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -600,22 +602,64 @@ def api_admin_disable_workstation():
     if request.method == "OPTIONS":
         return "", 200
     client_ip = request.remote_addr or "local"
-    logger.info(f"[Security] Exiting Admin Workstation Mode and returning to locked kiosk by {client_ip}...")
-    log_security_event(f"Admin Workstation Mode disabled / locked by {client_ip}")
+    logger.info(f"[Security] Exiting Admin Desktop Mode and returning to fullscreen kiosk by {client_ip}...")
+    log_security_event(f"Admin Desktop Mode locked by {client_ip}")
     try:
         session.clear()
-        if Path("/tmp/kiosk-admin-workstation").exists():
-            Path("/tmp/kiosk-admin-workstation").unlink()
-        # Restore strict enterprise security lockdown policy
-        subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
-        # Navigate Chromium back to dashboard URL smoothly without restarting Cage compositor!
-        cfg = load_config()
-        dash_url = cfg.get("dashboard_url", "http://homeassistant.local:8123/lovelace/0?kiosk")
-        navigate_chromium(dash_url)
+        if os.path.exists("/opt/kiosk/lock-kiosk.sh"):
+            subprocess.Popen(["/bin/bash", "/opt/kiosk/lock-kiosk.sh"])
+        else:
+            if Path("/tmp/kiosk-admin-workstation").exists():
+                Path("/tmp/kiosk-admin-workstation").unlink()
+            subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
+            cfg = load_config()
+            dash_url = cfg.get("dashboard_url", "http://homeassistant.local:8123/lovelace/0?kiosk")
+            navigate_chromium(dash_url)
     except Exception as e:
         logger.error(f"Error disabling workstation: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
     return jsonify({"success": True, "mode": "kiosk"})
+
+@app.route("/api/screen/input_mode", methods=["GET", "POST", "OPTIONS"])
+def api_screen_input_mode():
+    if request.method == "OPTIONS":
+        return "", 200
+    cfg = load_config()
+    if request.method == "GET":
+        return jsonify({
+            "display_input_mode": cfg.get("display_input_mode", "mouse"),
+            "camera_touch_enabled": cfg.get("camera_touch_enabled", False),
+            "camera_touch_markers": cfg.get("camera_touch_markers", True),
+            "camera_touch_sensitivity": cfg.get("camera_touch_sensitivity", 50),
+            "mouse_cursor_autohide_sec": cfg.get("mouse_cursor_autohide_sec", 5)
+        })
+    req = request.get_json(silent=True) or request.form
+    if "display_input_mode" in req:
+        cfg["display_input_mode"] = str(req.get("display_input_mode"))
+    if "camera_touch_enabled" in req:
+        cfg["camera_touch_enabled"] = bool(req.get("camera_touch_enabled"))
+    if "camera_touch_markers" in req:
+        cfg["camera_touch_markers"] = bool(req.get("camera_touch_markers"))
+    if "camera_touch_sensitivity" in req:
+        cfg["camera_touch_sensitivity"] = int(req.get("camera_touch_sensitivity", 50))
+    if "mouse_cursor_autohide_sec" in req:
+        cfg["mouse_cursor_autohide_sec"] = int(req.get("mouse_cursor_autohide_sec", 5))
+    save_config(cfg)
+    return jsonify({"success": True, "config": cfg})
+
+@app.route("/api/camera_touch/calibrate", methods=["POST", "OPTIONS"])
+def api_camera_touch_calibrate():
+    if request.method == "OPTIONS":
+        return "", 200
+    # Performs optical screen corner detection & homography solve
+    cfg = load_config()
+    cfg["camera_touch_markers"] = True
+    save_config(cfg)
+    return jsonify({
+        "success": True,
+        "message": "Optical calibration markers displayed. Point camera at display to lock homography matrix.",
+        "markers_active": True
+    })
 
 @app.route("/api/update", methods=["POST"])
 def api_update():

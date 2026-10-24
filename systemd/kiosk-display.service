@@ -1,5 +1,5 @@
 [Unit]
-Description=Cage Wayland Kiosk Display Compositor
+Description=Wayland Kiosk Display Compositor (labwc)
 After=network-online.target systemd-user-sessions.service
 Wants=network-online.target
 Conflicts=getty@tty1.service
@@ -21,7 +21,7 @@ StandardOutput=journal
 StandardError=journal
 Restart=always
 RestartSec=3
-ExecStart=/usr/bin/cage -s -- /opt/kiosk/launch-kiosk.sh
+ExecStart=/usr/bin/labwc -C /etc/kiosk/labwc -s /opt/kiosk/launch-kiosk.sh
 
 [Install]
 WantedBy=graphical.target

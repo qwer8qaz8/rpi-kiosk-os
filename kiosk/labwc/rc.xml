@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>8</gap>
+  </core>
+
+  <theme>
+    <name>macOS</name>
+    <cornerRadius>10</cornerRadius>
+    <titlebar>
+      <!-- Authentic macOS layout: Close, Iconify (Minimize), Maximize on the LEFT -->
+      <layout>close,iconify,max:title</layout>
+    </titlebar>
+    <font name="sans-serif" size="11" />
+  </theme>
+
+  <windowRules>
+    <!-- Fullscreen single-app Kiosk Mode: No borders, no titlebars, cover full display -->
+    <windowRule identifier="chromium-kiosk" serverDecoration="no">
+      <action name="Maximize" />
+    </windowRule>
+
+    <!-- Admin Desktop standalone windows: Framed with macOS traffic lights -->
+    <windowRule identifier="chromium" serverDecoration="yes" />
+    <windowRule identifier="foot" serverDecoration="yes" />
+  </windowRules>
+
+  <keyboard>
+    <!-- Native Compositor Keybind: Ctrl+Alt+= to toggle Admin Desktop Mode -->
+    <keybind key="C-A-equal">
+      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
+    </keybind>
+  </keyboard>
+
+  <mouse>
+    <default />
+  </mouse>
+</labwc_config>

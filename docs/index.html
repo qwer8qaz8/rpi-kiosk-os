@@ -851,43 +851,43 @@
         <!-- Feature 1 -->
         <div class="feature-card">
           <div class="card-icon">🖥️</div>
-          <h3>macOS Admin Desktop</h3>
-          <p>Switch smoothly into a desktop mode with a floating dock, real app icons, live menu bar, and windowed apps (Google Chrome, Preferences, Terminal Logs, and Camera Sensor) without stopping your display compositor.</p>
+          <h3>Native macOS Desktop UI</h3>
+          <p>Powered by native Wayland window management (<code>labwc</code> + <code>waybar</code>). Real Google Chrome browser windows, standalone Control Center, floating glass dock, live Apple menu bar, and native top-left traffic light window controls. Never trapped in a web tab.</p>
         </div>
 
         <!-- Feature 2 -->
         <div class="feature-card">
           <div class="card-icon">🔐</div>
           <h3>Secret Sequence Unlock</h3>
-          <p>High-security access barrier: press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>=</kbd>, type <kbd>Kiosk</kbd> while listening in the corner, and unlock with your administrator password. Press <kbd>Esc</kbd> anytime to cancel.</p>
+          <p>Strict keystroke isolation: press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>=</kbd>, type <kbd>Kiosk</kbd> while listening in the corner, and unlock with your administrator password. Home Assistant never intercepts key events.</p>
         </div>
 
         <!-- Feature 3 -->
         <div class="feature-card">
-          <div class="card-icon">📷</div>
-          <h3>Camera Motion Detection</h3>
-          <p>Turns connected USB webcams or CSI cameras into a room motion detector. Automatically publishes <code>binary_sensor.kiosk_motion</code> events to Home Assistant and wakes the display when you enter the room.</p>
+          <div class="card-icon">👁️</div>
+          <h3>Optical Camera Touch (Beta)</h3>
+          <p>Turn any standard monitor or TV into an optical touchscreen! Overlays 4 high-contrast corner fiducials to calibrate screen boundaries and homography, tracking fingertip touches using an external webcam.</p>
         </div>
 
         <!-- Feature 4 -->
         <div class="feature-card">
-          <div class="card-icon">🌙</div>
-          <h3>Automated Night Mode</h3>
-          <p>Schedule display sleep during nighttime hours to eliminate room glare and save power. The screen stays completely dark and wakes automatically in the morning or upon room motion.</p>
+          <div class="card-icon">🖱️</div>
+          <h3>Non-Touch & Touchscreen Modes</h3>
+          <p>Tailored input hardware profiles: Standard display mode features smart auto-hiding cursor (fades after inactivity and awakens on motion), while Touchscreen mode delivers an immersive pointer-free touch experience.</p>
         </div>
 
         <!-- Feature 5 -->
         <div class="feature-card">
-          <div class="card-icon">🏠</div>
-          <h3>Home Assistant MQTT Ready</h3>
-          <p>Full MQTT auto-discovery for 10+ smart entities: Screen Power, Display Brightness slider, CPU Temperature, RAM usage, Night Mode switch, and Camera snapshots.</p>
+          <div class="card-icon">🌙</div>
+          <h3>Automated Night Mode & Motion</h3>
+          <p>Schedule display sleep during nighttime hours with camera motion wake. Safe display blanking prevents compositor shutdown and integrates directly with Home Assistant MQTT.</p>
         </div>
 
         <!-- Feature 6 -->
         <div class="feature-card">
           <div class="card-icon">🐧</div>
           <h3>Universal Linux Architecture</h3>
-          <p>Not limited to Raspberry Pi. Runs on any x86_64 or ARM64 Linux system (Debian, Ubuntu, Fedora) using modern Wayland (Cage) or X11 display stacks.</p>
+          <p>Works across Raspberry Pi OS, Debian, Ubuntu, and x86_64 PCs using modern Wayland and hardware-accelerated graphics.</p>
         </div>
       </div>
     </section>

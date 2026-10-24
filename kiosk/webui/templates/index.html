@@ -374,6 +374,65 @@
       </form>
     </div>
 
+    <!-- Screen & Touch Input Hardware Mode Card -->
+    <div class="card" id="display">
+      <div class="card-title">📱 Screen & Input Hardware Mode</div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.4;">
+        Configure how users interact with your display. Select whether you are using a standard monitor with mouse, a physical touch display, or an optical camera touch tracker.
+      </p>
+
+      <div class="form-group">
+        <label for="inputModeSelect">Display Input Device</label>
+        <select id="inputModeSelect" onchange="handleInputModeChange()">
+          <option value="mouse" {% if config.get('display_input_mode') == 'mouse' or not config.get('display_input_mode') %}selected{% endif %}>🖱️ Standard Display (Non-Touch / Mouse & Keyboard)</option>
+          <option value="touchscreen" {% if config.get('display_input_mode') == 'touchscreen' %}selected{% endif %}>👆 Physical Touchscreen (Capacitive / Resistive)</option>
+          <option value="camera_touch" {% if config.get('display_input_mode') == 'camera_touch' %}selected{% endif %}>👁️ Camera Touchscreen (Optical Vision Tracking - Beta)</option>
+        </select>
+      </div>
+
+      <!-- Mouse options -->
+      <div id="mouseOptions" style="display: {% if config.get('display_input_mode', 'mouse') == 'mouse' %}block{% else %}none{% endif %}; background: #0f172a; border-radius: 8px; padding: 12px; margin-bottom: 1rem;">
+        <label style="font-size: 0.85rem; color: #94a3b8; display: block; margin-bottom: 6px;">Mouse Cursor Auto-Hide (seconds of inactivity):</label>
+        <input type="number" id="mouseAutohide" min="1" max="60" value="{{ config.get('mouse_cursor_autohide_sec', 5) }}" style="width: 100px; padding: 6px; border-radius: 6px; background: #1e293b; color: #fff; border: 1px solid #334155;">
+        <span style="font-size: 0.8rem; color: #64748b; margin-left: 8px;">Cursor smoothly reappears on any mouse motion</span>
+      </div>
+
+      <!-- Touchscreen options -->
+      <div id="touchOptions" style="display: {% if config.get('display_input_mode') == 'touchscreen' %}block{% else %}none{% endif %}; background: #0f172a; border-radius: 8px; padding: 12px; margin-bottom: 1rem;">
+        <p style="font-size: 0.85rem; color: #10b981; margin: 0 0 6px 0;">✓ Cursor permanently hidden for clean kiosk touch experience</p>
+        <p style="font-size: 0.85rem; color: #94a3b8; margin: 0;">✓ Tap-to-wake display power active</p>
+      </div>
+
+      <!-- Camera Touch options -->
+      <div id="cameraTouchOptions" style="display: {% if config.get('display_input_mode') == 'camera_touch' %}block{% else %}none{% endif %}; background: #0f172a; border-radius: 8px; padding: 14px; margin-bottom: 1rem; border: 1px solid #2563eb;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <span style="font-weight: 600; color: #60a5fa; font-size: 0.9rem;">Optical Camera Touch Tracker (Active Beta)</span>
+          <span style="background: #1e3a8a; color: #93c5fd; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem;">Experimental</span>
+        </div>
+        <p style="font-size: 0.82rem; color: #94a3b8; line-height: 1.4; margin-bottom: 12px;">
+          Turns an ordinary monitor into a touch display by using a webcam or Raspberry Pi Camera pointed at the screen. High-contrast optical fiducials are placed on the four screen corners to compute homography and track fingertip contacts.
+        </p>
+
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <button type="button" class="btn btn-primary" onclick="toggleOpticalMarkers()" style="flex: 1; font-size: 0.85rem;">
+            🎯 Toggle Corner Calibration Markers
+          </button>
+          <button type="button" class="btn btn-warning" onclick="calibrateCameraTouch()" style="flex: 1; font-size: 0.85rem;">
+            📷 Calibrate with Camera
+          </button>
+        </div>
+
+        <div style="margin-top: 8px;">
+          <label style="font-size: 0.82rem; color: #cbd5e1; display: block; margin-bottom: 4px;">Touch Detection Sensitivity: <span id="sensitivityVal">{{ config.get('camera_touch_sensitivity', 50) }}</span>%</label>
+          <input type="range" id="sensitivitySlider" min="10" max="100" value="{{ config.get('camera_touch_sensitivity', 50) }}" style="width: 100%;" oninput="document.getElementById('sensitivityVal').textContent = this.value">
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-success" style="width: 100%;" onclick="saveInputModeSettings()">
+        💾 Save Screen & Input Mode
+      </button>
+    </div>
+
     <!-- Home Assistant & MQTT Card -->
     <div class="card">
       <div class="card-title">🏠 Home Assistant & MQTT</div>
@@ -661,6 +720,59 @@
         showToast("Error updating from GitHub", true);
         btn.textContent = "❌ Update Failed";
         btn.disabled = false;
+      }
+    }
+
+    function handleInputModeChange() {
+      const mode = document.getElementById("inputModeSelect").value;
+      document.getElementById("mouseOptions").style.display = (mode === "mouse") ? "block" : "none";
+      document.getElementById("touchOptions").style.display = (mode === "touchscreen") ? "block" : "none";
+      document.getElementById("cameraTouchOptions").style.display = (mode === "camera_touch") ? "block" : "none";
+    }
+
+    async function saveInputModeSettings() {
+      const mode = document.getElementById("inputModeSelect").value;
+      const autohide = parseInt(document.getElementById("mouseAutohide").value) || 5;
+      const sens = parseInt(document.getElementById("sensitivitySlider").value) || 50;
+      try {
+        const res = await fetch("/api/screen/input_mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            display_input_mode: mode,
+            mouse_cursor_autohide_sec: autohide,
+            camera_touch_sensitivity: sens
+          })
+        });
+        const d = await res.json();
+        if (d.success) {
+          showToast("Screen & Input settings saved!");
+        } else {
+          showToast("Failed to save settings", true);
+        }
+      } catch (e) {
+        showToast("Error saving input settings", true);
+      }
+    }
+
+    async function toggleOpticalMarkers() {
+      try {
+        const res = await fetch("/api/camera_touch/calibrate", { method: "POST" });
+        const d = await res.json();
+        showToast(d.message || "Optical calibration markers toggled!");
+      } catch (e) {
+        showToast("Error toggling markers", true);
+      }
+    }
+
+    async function calibrateCameraTouch() {
+      showToast("Aligning camera with optical screen fiducials...");
+      try {
+        const res = await fetch("/api/camera_touch/calibrate", { method: "POST" });
+        const d = await res.json();
+        showToast("Screen quad calibrated successfully!");
+      } catch (e) {
+        showToast("Calibration error", true);
       }
     }
 

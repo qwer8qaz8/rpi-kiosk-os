@@ -394,10 +394,11 @@ function openPasswordModal() {
                     }
                 })
                 .then(() => {
-                    window.location.href = 'http://127.0.0.1:8080/desktop?token=' + token;
+                    // Password modal closes; start-desktop.sh replaces fullscreen kiosk with real native macOS desktop
+                    if (passwordModalEl) passwordModalEl.style.display = 'none';
                 })
                 .catch(() => {
-                    window.location.href = 'http://127.0.0.1:8080/desktop?token=' + token;
+                    if (passwordModalEl) passwordModalEl.style.display = 'none';
                 });
             } else {
                 submitBtn.textContent = 'Unlock (Enter)';
@@ -1417,7 +1418,59 @@ function renderAdminUI() {
     };
 }
 
+// Screen & Input Mode Handler (Mouse auto-hide, Touch, Camera Optical Touch Calibration)
+let mouseIdleTimer = null;
+function initInputMode() {
+    fetch('http://127.0.0.1:8080/api/screen/input_mode')
+        .then(r => r.json())
+        .then(cfg => {
+            const mode = cfg.display_input_mode || 'mouse';
+            if (mode === 'touchscreen') {
+                document.documentElement.style.cursor = 'none';
+            } else if (mode === 'mouse') {
+                const timeoutSec = (cfg.mouse_cursor_autohide_sec || 5) * 1000;
+                window.addEventListener('mousemove', () => {
+                    document.documentElement.style.cursor = 'default';
+                    if (mouseIdleTimer) clearTimeout(mouseIdleTimer);
+                    mouseIdleTimer = setTimeout(() => {
+                        document.documentElement.style.cursor = 'none';
+                    }, timeoutSec);
+                });
+            } else if (mode === 'camera_touch' || cfg.camera_touch_markers) {
+                renderOpticalCalibrationMarkers();
+            }
+        }).catch(() => {});
+}
+
+function renderOpticalCalibrationMarkers() {
+    if (document.getElementById('kiosk-optical-markers')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'kiosk-optical-markers';
+    overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483640;';
+    
+    const mk = (pos, label) => `
+        <div style="position:absolute;${pos};width:52px;height:52px;display:flex;align-items:center;justify-content:center;">
+            <div style="width:40px;height:40px;border-radius:50%;border:3px solid #00ff66;box-shadow:0 0 12px #00ff66;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);">
+                <div style="width:10px;height:10px;border-radius:50%;background:#00ff66;"></div>
+            </div>
+            <span style="position:absolute;font-family:monospace;font-size:10px;font-weight:900;color:#00ff66;background:#000;padding:1px 4px;border-radius:3px;border:1px solid #00ff66;">${label}</span>
+        </div>
+    `;
+
+    overlay.innerHTML = `
+        ${mk('top:10px;left:10px', 'TL')}
+        ${mk('top:10px;right:10px', 'TR')}
+        ${mk('bottom:10px;left:10px', 'BL')}
+        ${mk('bottom:10px;right:10px', 'BR')}
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:32px;height:32px;border:2px dashed rgba(0,255,102,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+            <div style="width:6px;height:6px;background:#00ff66;border-radius:50%;"></div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+}
+
 checkAdminStatus();
+initInputMode();
 EOF_EXT_JS
 
 if [ -n "$AUTOLOGIN_USER" ]; then

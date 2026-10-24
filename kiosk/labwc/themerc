@@ -1,0 +1,50 @@
+# macOS Modern Dark Theme for labwc
+border.width: 1
+window.titlebar.padding.width: 12
+window.titlebar.padding.height: 6
+
+# Window border
+window.active.border.color: #334155
+window.inactive.border.color: #1e293b
+
+# Titlebar backgrounds
+window.active.title.bg.color: #1e222d
+window.inactive.title.bg.color: #141721
+window.*.title.bg: Solid
+
+# Titlebar label / typography
+window.active.label.text.color: #f1f5f9
+window.inactive.label.text.color: #64748b
+window.label.text.justify: center
+
+# Buttons geometry
+window.button.width: 14
+window.button.height: 14
+window.button.spacing: 8
+window.button.hover.bg.corner-radius: 7
+
+# macOS Traffic Lights: Close (Red), Iconify (Yellow), Max (Green)
+window.active.button.close.unpressed.image.color: #ff5f56
+window.active.button.iconify.unpressed.image.color: #ffbd2e
+window.active.button.max.unpressed.image.color: #27c93f
+
+window.inactive.button.close.unpressed.image.color: #4b5563
+window.inactive.button.iconify.unpressed.image.color: #4b5563
+window.inactive.button.max.unpressed.image.color: #4b5563
+
+# Drop shadows
+window.active.shadow.size: 35
+window.active.shadow.color: #00000088
+window.inactive.shadow.size: 20
+window.inactive.shadow.color: #00000055
+
+# Menu styling
+menu.border.width: 1
+menu.border.color: #334155
+menu.items.bg.color: #1e222d
+menu.items.text.color: #f8fafc
+menu.items.active.bg.color: #2563eb
+menu.items.active.text.color: #ffffff
+menu.items.padding.x: 10
+menu.items.padding.y: 6
+menu.separator.color: #334155

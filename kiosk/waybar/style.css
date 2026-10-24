@@ -1,0 +1,137 @@
+/* macOS Modern Frosted Glass Theme for Waybar */
+* {
+    border: none;
+    border-radius: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-size: 13px;
+    min-height: 0;
+}
+
+/* macOS Top Bar */
+window#waybar.macos-topbar {
+    background: rgba(18, 22, 34, 0.92);
+    color: #f1f5f9;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+#custom-apple {
+    font-size: 16px;
+    font-weight: 700;
+    padding: 0 12px;
+    color: #ffffff;
+    cursor: pointer;
+}
+
+#custom-appname {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    padding: 0 8px;
+}
+
+#custom-screencontrol {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+    padding: 2px 10px;
+    margin: 3px 6px;
+    color: #cbd5e1;
+    cursor: pointer;
+}
+
+#custom-screencontrol:hover {
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+}
+
+#custom-inputmode {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    border-radius: 6px;
+    padding: 2px 10px;
+    margin: 3px 6px;
+    color: #93c5fd;
+    cursor: pointer;
+}
+
+#custom-inputmode:hover {
+    background: rgba(59, 130, 246, 0.35);
+    color: #ffffff;
+}
+
+#clock {
+    color: #e2e8f0;
+    font-weight: 500;
+    padding: 0 12px;
+}
+
+#custom-lock {
+    background: #dc2626;
+    color: #ffffff;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 2px 12px;
+    margin: 3px 10px 3px 4px;
+    cursor: pointer;
+}
+
+#custom-lock:hover {
+    background: #ef4444;
+}
+
+/* macOS Floating Bottom Dock */
+window#waybar.macos-dock {
+    background: transparent;
+}
+
+window#waybar.macos-dock .modules-center {
+    background: rgba(26, 32, 48, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 22px;
+    padding: 6px 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+#custom-dock-chrome,
+#custom-dock-settings,
+#custom-dock-camera,
+#custom-dock-terminal,
+#custom-dock-lock {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 18px;
+    margin: 0 6px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#custom-dock-chrome:hover {
+    background: rgba(66, 133, 244, 0.35);
+    border-color: rgba(66, 133, 244, 0.6);
+}
+
+#custom-dock-settings:hover {
+    background: rgba(168, 85, 247, 0.35);
+    border-color: rgba(168, 85, 247, 0.6);
+}
+
+#custom-dock-camera:hover {
+    background: rgba(16, 185, 129, 0.35);
+    border-color: rgba(16, 185, 129, 0.6);
+}
+
+#custom-dock-terminal:hover {
+    background: rgba(245, 158, 11, 0.35);
+    border-color: rgba(245, 158, 11, 0.6);
+}
+
+#custom-dock-lock:hover {
+    background: rgba(239, 68, 68, 0.4);
+    border-color: rgba(239, 68, 68, 0.8);
+}
