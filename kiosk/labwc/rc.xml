@@ -34,6 +34,14 @@
     <keybind key="C-equal">
       <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
     </keybind>
+    <!-- Restart Kiosk Keybind: Ctrl+Alt+R -->
+    <keybind key="C-A-r">
+      <action name="Execute" command="/usr/bin/sudo /bin/systemctl restart kiosk-display" />
+    </keybind>
+    <!-- Reboot Keybind: Ctrl+Alt+Delete -->
+    <keybind key="C-A-Delete">
+      <action name="Execute" command="/usr/bin/sudo /bin/systemctl reboot" />
+    </keybind>
   </keyboard>
 
   <mouse>

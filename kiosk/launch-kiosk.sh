@@ -276,6 +276,11 @@ let secretListenTimer = null;
 let secretIndicatorEl = null;
 
 function showCornerIndicator(status = 'listening', extra = '') {
+    // Silent mode: do not display any text or hints on screen during listening
+    if (status === 'listening') {
+        if (secretIndicatorEl) secretIndicatorEl.style.display = 'none';
+        return;
+    }
     if (!secretIndicatorEl) {
         secretIndicatorEl = document.createElement('div');
         secretIndicatorEl.id = 'rpi-kiosk-secret-indicator';
@@ -300,24 +305,19 @@ function showCornerIndicator(status = 'listening', extra = '') {
         document.body.appendChild(secretIndicatorEl);
     }
 
-    if (status === 'listening') {
-        secretIndicatorEl.style.background = 'rgba(15, 23, 42, 0.95)';
-        secretIndicatorEl.style.border = '1px solid #38bdf8';
-        secretIndicatorEl.style.color = '#38bdf8';
-        const displayPrompt = extra ? extra : 'type Kiosk';
-        secretIndicatorEl.innerHTML = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px #38bdf8;"></span><span>● Listening [${displayPrompt}]</span>`;
-    } else if (status === 'success') {
+    if (status === 'success') {
         secretIndicatorEl.style.background = 'rgba(6, 78, 59, 0.96)';
         secretIndicatorEl.style.border = '1px solid #34d399';
         secretIndicatorEl.style.color = '#34d399';
         secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Unlocking...</span>';
+        secretIndicatorEl.style.display = 'flex';
     } else if (status === 'error') {
         secretIndicatorEl.style.background = 'rgba(127, 29, 29, 0.96)';
         secretIndicatorEl.style.border = '1px solid #f87171';
         secretIndicatorEl.style.color = '#f87171';
         secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Cancelled</span>';
+        secretIndicatorEl.style.display = 'flex';
     }
-    secretIndicatorEl.style.display = 'flex';
 }
 
 function hideCornerIndicator() {
@@ -557,6 +557,24 @@ window.addEventListener('keydown', function(e) {
         e.stopPropagation();
         e.stopImmediatePropagation();
         hideCornerIndicator();
+        return false;
+    }
+
+    // Restart Kiosk Shortcut: Ctrl + Alt + R
+    if (e.ctrlKey && e.altKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR')) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        fetch('http://127.0.0.1:8080/api/reload', { method: 'POST' }).catch(() => {});
+        return false;
+    }
+
+    // Reboot Kiosk Shortcut: Ctrl + Alt + Delete
+    if (e.ctrlKey && e.altKey && (e.key === 'Delete' || e.code === 'Delete')) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        fetch('http://127.0.0.1:8080/api/reboot', { method: 'POST' }).catch(() => {});
         return false;
     }
 
