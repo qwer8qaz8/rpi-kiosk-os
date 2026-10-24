@@ -126,7 +126,7 @@ set_brightness() {
 
   # 3. Hardware DDC/CI for HDMI monitors (if available)
   if command -v ddcutil >/dev/null 2>&1; then
-    ddcutil setvcp 10 "$percent" >/dev/null 2>&1 &
+    nohup ddcutil setvcp 10 "$percent" >/dev/null 2>&1 &
   fi
 
   # Save to config
@@ -184,7 +184,7 @@ set_screen_power() {
 
     # 4. ddcutil monitor wake (HDMI)
     if command -v ddcutil >/dev/null 2>&1; then
-      ddcutil setvcp d6 1 >/dev/null 2>&1 &
+      nohup ddcutil setvcp d6 1 >/dev/null 2>&1 &
     fi
 
     # 5. Generic Linux console unblank
@@ -230,7 +230,7 @@ except Exception:
 
     # 4. ddcutil monitor sleep (HDMI)
     if command -v ddcutil >/dev/null 2>&1; then
-      ddcutil setvcp d6 5 >/dev/null 2>&1 &
+      nohup ddcutil setvcp d6 5 >/dev/null 2>&1 &
     fi
 
     # 5. Generic Linux console blank

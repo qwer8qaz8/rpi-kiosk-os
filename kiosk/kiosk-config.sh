@@ -374,7 +374,7 @@ if [ "$#" -gt 0 ]; then
     unlock|--unlock)
       require_root
       remove_security_policy
-      systemctl restart kiosk-display 2>/dev/null || true
+      [ ! -f /tmp/kiosk-admin-workstation ] && systemctl restart kiosk-display 2>/dev/null || true
       echo -e "${GREEN}✓ Temporary unlock mode enabled! (Configured successfully!)${NC}"
       exit 0
       ;;

@@ -221,6 +221,44 @@
       border-color: var(--primary);
     }
 
+    /* Modern Toggle Switches */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 26px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #334155;
+      transition: .2s;
+      border-radius: 26px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2563eb;
+    }
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+
     .form-row {
       display: grid;
       grid-template-columns: 1fr;
@@ -524,6 +562,104 @@
       </button>
     </div>
 
+    <!-- Optical Camera Touchscreen Suite Card -->
+    <div class="card" id="camera-touch-card">
+      <div class="card-title">👁️ Optical Camera Touchscreen Suite</div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.85rem;">
+        Transform any standard display into an interactive touchscreen using 1 camera, stereo dual cameras, or Xbox Kinect infrared depth sensing.
+      </p>
+
+      <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; background: #0f172a; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px;">
+        <div>
+          <strong style="color: #f1f5f9; display: block; font-size: 0.9rem;">Camera Touch Digitizer</strong>
+          <span style="font-size: 0.78rem; color: #94a3b8;">Emulate Linux multi-touch input device via uinput</span>
+        </div>
+        <label class="switch" style="margin: 0;">
+          <input type="checkbox" id="cameraTouchToggle" {% if config.get('camera_touch', {}).get('enabled', False) %}checked{% endif %} onchange="toggleCameraTouch(this.checked)">
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label for="cameraTouchMode">Tracking Sensor Mode:</label>
+        <select id="cameraTouchMode" onchange="changeCameraTouchMode(this.value)">
+          <option value="single" {% if config.get('camera_touch', {}).get('mode', 'single') == 'single' %}selected{% endif %}>📷 1 Camera (Single Optical Tracker - Instant Setup)</option>
+          <option value="dual" {% if config.get('camera_touch', {}).get('mode') == 'dual' %}selected{% endif %}>📸📸 2 Cameras (Stereo Triangulation Depth)</option>
+          <option value="kinect" {% if config.get('camera_touch', {}).get('mode') == 'kinect' %}selected{% endif %}>🎮 Xbox Kinect (Infrared Depth &amp; Spatial Touch)</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; background: #0f172a; padding: 12px 16px; border-radius: 8px; margin-bottom: 14px;">
+        <div>
+          <strong style="color: #f1f5f9; display: block; font-size: 0.9rem;">Dynamic Moving Camera (Persistent Mini-Markers)</strong>
+          <span style="font-size: 0.78rem; color: #94a3b8;">Subtle, elegant corner dots to track non-stationary / vibrating cameras</span>
+        </div>
+        <label class="switch" style="margin: 0;">
+          <input type="checkbox" id="cameraTouchDynamic" {% if config.get('camera_touch', {}).get('dynamic_tracking', False) %}checked{% endif %} onchange="toggleCameraDynamic(this.checked)">
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <button type="button" class="btn btn-primary" onclick="launchTouchCalibrate()">
+          🎯 Calibrate Alignment
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="launchTouchTest()">
+          📹 Live Camera Test
+        </button>
+      </div>
+    </div>
+
+    <!-- Appliance Speed & Kiosk-Only Mode Card -->
+    <div class="card" id="speed-mode-card">
+      <div class="card-title">⚡ Appliance Speed &amp; Security Mode</div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.85rem;">
+        Configure hardware performance optimization. In Turbo Mode, all admin shortcuts, background listeners, and desktop components are completely eliminated for lowest latency and maximum FPS.
+      </p>
+
+      <div class="form-group">
+        <label for="speedModeSelect">Performance Profile:</label>
+        <select id="speedModeSelect" onchange="changeSpeedMode(this.value)">
+          <option value="standard" {% if config.get('speed_mode', 'standard') == 'standard' %}selected{% endif %}>🚀 Standard Mode (Admin Desktop + Shortcut Listener Active)</option>
+          <option value="turbo" {% if config.get('speed_mode') == 'turbo' %}selected{% endif %}>⚡ Turbo Appliance Mode (Pure Kiosk-Only, Zero Background Overhead)</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; background: #0f172a; padding: 12px 16px; border-radius: 8px;">
+        <div>
+          <strong style="color: #f1f5f9; display: block; font-size: 0.9rem;">On-Device Admin Access</strong>
+          <span style="font-size: 0.78rem; color: #94a3b8;">Allow <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>=</kbd> to unlock workstation mode</span>
+        </div>
+        <label class="switch" style="margin: 0;">
+          <input type="checkbox" id="adminEnabledToggle" {% if config.get('admin_enabled', True) %}checked{% endif %} onchange="toggleAdminEnabled(this.checked)">
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Audio & Startup Sound Card -->
+    <div class="card" id="audio-card">
+      <div class="card-title">🔊 Audio &amp; Startup Chime</div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.85rem;">
+        Plays an elegant hardware startup chime through the audio output when KioskOS finishes booting into the dashboard.
+      </p>
+
+      <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; background: #0f172a; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px;">
+        <div>
+          <strong style="color: #f1f5f9; display: block; font-size: 0.9rem;">Startup Chime Sound</strong>
+          <span style="font-size: 0.78rem; color: #94a3b8;">Play chime sound automatically on boot</span>
+        </div>
+        <label class="switch" style="margin: 0;">
+          <input type="checkbox" id="chimeToggle" {% if config.get('startup_chime', True) %}checked{% endif %} onchange="toggleStartupChime(this.checked)">
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <button type="button" class="btn btn-secondary" style="width: 100%;" onclick="playTestChime()">
+        🔔 Play Test Chime Now
+      </button>
+    </div>
+
     <!-- System Updates Card -->
     <div class="card">
       <div class="card-title">🔄 Software Updates</div>
@@ -780,6 +916,128 @@
         showToast("Screen quad calibrated successfully!");
       } catch (e) {
         showToast("Calibration error", true);
+      }
+    }
+
+    async function toggleCameraTouch(enabled) {
+      try {
+        const res = await fetch("/api/touch/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: enabled })
+        });
+        const d = await res.json();
+        showToast(d.enabled ? "Camera Touch enabled & service active" : "Camera Touch disabled");
+      } catch (e) {
+        showToast("Error toggling Camera Touch", true);
+      }
+    }
+
+    async function changeCameraTouchMode(mode) {
+      try {
+        const res = await fetch("/api/touch/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: mode })
+        });
+        const d = await res.json();
+        showToast("Camera Touch mode set to: " + mode);
+      } catch (e) {
+        showToast("Error updating sensor mode", true);
+      }
+    }
+
+    async function toggleCameraDynamic(enabled) {
+      try {
+        const res = await fetch("/api/touch/dynamic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dynamic_tracking: enabled })
+        });
+        const d = await res.json();
+        showToast(d.dynamic_tracking ? "Dynamic mini-markers enabled" : "Dynamic mini-markers disabled");
+      } catch (e) {
+        showToast("Error toggling dynamic mode", true);
+      }
+    }
+
+    async function launchTouchCalibrate() {
+      showToast("Launching fullscreen alignment markers on display...");
+      try {
+        const res = await fetch("/api/touch/calibrate", { method: "POST" });
+        const d = await res.json();
+        showToast(d.message || "Calibration screen active on kiosk");
+      } catch (e) {
+        showToast("Error launching calibration", true);
+      }
+    }
+
+    async function launchTouchTest() {
+      showToast("Launching camera tracking live test...");
+      try {
+        const res = await fetch("/api/touch/test", { method: "POST" });
+        const d = await res.json();
+        showToast(d.message || "Live camera test opened");
+      } catch (e) {
+        showToast("Error launching test", true);
+      }
+    }
+
+    async function changeSpeedMode(mode) {
+      showToast("Switching performance profile to " + mode + "...");
+      try {
+        const res = await fetch("/api/speed/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: mode })
+        });
+        const d = await res.json();
+        showToast("Speed mode: " + mode + ". Kiosk restarted.");
+        if (mode === "turbo") {
+          const el = document.getElementById("adminEnabledToggle");
+          if (el) el.checked = false;
+        }
+      } catch (e) {
+        showToast("Error setting speed mode", true);
+      }
+    }
+
+    async function toggleAdminEnabled(enabled) {
+      try {
+        const res = await fetch("/api/admin/toggle_enabled", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: enabled })
+        });
+        const d = await res.json();
+        showToast(d.admin_enabled ? "On-device Admin Mode enabled" : "On-device Admin Mode disabled");
+      } catch (e) {
+        showToast("Error toggling Admin Mode", true);
+      }
+    }
+
+    async function toggleStartupChime(enabled) {
+      try {
+        const res = await fetch("/api/chime/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: enabled })
+        });
+        const d = await res.json();
+        showToast(d.startup_chime ? "Startup chime enabled" : "Startup chime disabled");
+      } catch (e) {
+        showToast("Error toggling startup chime", true);
+      }
+    }
+
+    async function playTestChime() {
+      showToast("Playing startup chime...");
+      try {
+        const res = await fetch("/api/chime/test", { method: "POST" });
+        const d = await res.json();
+        showToast("Chime played successfully!");
+      } catch (e) {
+        showToast("Error playing chime", true);
       }
     }
 

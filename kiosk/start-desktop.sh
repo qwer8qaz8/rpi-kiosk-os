@@ -11,9 +11,9 @@ echo "[kiosk-desktop] Transitioning to Real Linux Desktop Environment..."
 touch /tmp/kiosk-admin-workstation
 
 # Relax lockdown policy so full browser and networking are unrestricted
-if [ -f /opt/kiosk/kiosk-config.sh ]; then
-    sudo /opt/kiosk/kiosk-config.sh --unlock 2>/dev/null || true
-fi
+sudo rm -f /etc/chromium/policies/managed/kiosk_security_policy.json \
+           /etc/chromium-browser/policies/managed/kiosk_security_policy.json \
+           /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
 
 # 1. Completely terminate fullscreen kiosk chromium so it yields display to desktop
 killall -9 chromium chromium-browser 2>/dev/null || pkill -9 -f chromium 2>/dev/null || true

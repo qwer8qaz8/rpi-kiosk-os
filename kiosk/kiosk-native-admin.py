@@ -165,7 +165,7 @@ class NativeAdminWindow(Gtk.Window):
         card1.get_style_context().add_class("section-card")
 
         c1_title = Gtk.Label()
-        c1_title.set_markup('<span class="section-title">Home Assistant / Kiosk Dashboard URL</span>')
+        c1_title.set_markup('<span font="13" weight="bold" color="#e2e8f0">Home Assistant / Kiosk Dashboard URL</span>')
         c1_title.set_halign(Gtk.Align.START)
         card1.pack_start(c1_title, False, False, 0)
 
@@ -188,7 +188,7 @@ class NativeAdminWindow(Gtk.Window):
         card2.get_style_context().add_class("section-card")
 
         c2_title = Gtk.Label()
-        c2_title.set_markup('<span class="section-title">Display & Hardware Control</span>')
+        c2_title.set_markup('<span font="13" weight="bold" color="#e2e8f0">Display &amp; Hardware Control</span>')
         c2_title.set_halign(Gtk.Align.START)
         card2.pack_start(c2_title, False, False, 0)
 
@@ -246,7 +246,7 @@ class NativeAdminWindow(Gtk.Window):
         card_touch.get_style_context().add_class("section-card")
 
         ct_title = Gtk.Label()
-        ct_title.set_markup('<span class="section-title">Optical Camera Touchscreen</span>')
+        ct_title.set_markup('<span font="13" weight="bold" color="#e2e8f0">Optical Camera Touchscreen</span>')
         ct_title.set_halign(Gtk.Align.START)
         card_touch.pack_start(ct_title, False, False, 0)
 
@@ -304,7 +304,7 @@ class NativeAdminWindow(Gtk.Window):
         card3.get_style_context().add_class("section-card")
 
         c3_title = Gtk.Label()
-        c3_title.set_markup('<span class="section-title">System Actions & Maintenance</span>')
+        c3_title.set_markup('<span font="13" weight="bold" color="#e2e8f0">System Actions &amp; Maintenance</span>')
         c3_title.set_halign(Gtk.Align.START)
         card3.pack_start(c3_title, False, False, 0)
 
@@ -377,6 +377,7 @@ class NativeAdminWindow(Gtk.Window):
         self.config["screen_on"] = state
         save_config(self.config)
         subprocess.run(["sudo", "/usr/local/bin/kiosk-screen", "on" if state else "off"], capture_output=True)
+        return False
 
     def on_rotation_change(self, combo):
         rot = combo.get_active_text()
@@ -392,6 +393,7 @@ class NativeAdminWindow(Gtk.Window):
             chime_script = "/opt/kiosk/play-chime.sh"
             if os.path.exists(chime_script):
                 subprocess.Popen([chime_script])
+        return False
 
     def on_touch_toggle(self, switch, state):
         if "camera_touch" not in self.config:
@@ -400,6 +402,7 @@ class NativeAdminWindow(Gtk.Window):
         save_config(self.config)
         action = "start" if state else "stop"
         subprocess.run(["sudo", "systemctl", action, "kiosk-camera-touch.service"], capture_output=True)
+        return False
 
     def on_touch_mode_change(self, combo):
         active_id = combo.get_active_id()
@@ -416,6 +419,7 @@ class NativeAdminWindow(Gtk.Window):
         self.config["camera_touch"]["dynamic_tracking"] = state
         save_config(self.config)
         subprocess.run(["sudo", "systemctl", "restart", "kiosk-camera-touch.service"], capture_output=True)
+        return False
 
     def on_calibrate_touch(self, widget):
         calib_script = "/opt/kiosk/camera-touch/touch_calibration.py"

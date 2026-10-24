@@ -3,7 +3,13 @@
 # launch-kiosk.sh - Invoked by Cage Wayland compositor on boot
 # ==============================================================================
 
-set -eo pipefail
+set +e
+set -o pipefail
+
+# Ensure single supervisor instance runs at a time
+LOCKFILE="/tmp/launch-kiosk.lock"
+exec 200>"$LOCKFILE"
+flock -n 200 || { echo "[kiosk] Another launch-kiosk supervisor is already running, exiting cleanly."; exit 0; }
 
 CONFIG_FILE="/etc/kiosk/config.json"
 FALLBACK_CONFIG="/opt/kiosk/config.json"
@@ -49,6 +55,28 @@ try:
 except Exception:
     print(True)
 ")
+
+ADMIN_ENABLED=$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(json.load(f).get('admin_enabled', True))
+except Exception:
+    print(True)
+")
+
+SPEED_MODE=$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(json.load(f).get('speed_mode', 'standard'))
+except Exception:
+    print('standard')
+")
+
+if [ "$SPEED_MODE" = "turbo" ]; then
+    ADMIN_ENABLED="False"
+fi
 
 echo "[kiosk] Starting kiosk environment..."
 echo "[kiosk] Dashboard URL: $DASHBOARD_URL"
@@ -266,6 +294,8 @@ cat << 'EOF_EXT_JS' > "$EXT_DIR/content.js"
 // RPi Kiosk Security, Auto-Login, and Interactive Admin Overlay Extension
 // ==============================================================================
 
+const __KIOSK_ADMIN_ENABLED = __ADMIN_ENABLED_FLAG__;
+
 // 0. Single Window Lockdown: Force all links, popups, and window.open to stay in current tab
 try {
     const _origWindowOpen = window.open;
@@ -400,7 +430,7 @@ function hideCornerIndicator() {
 }
 
 // Background sync loop for Maintenance Mode, Updates, and Remote Listener trigger
-if (window === window.top) {
+if (window === window.top && __KIOSK_ADMIN_ENABLED) {
     setInterval(async () => {
         try {
             const res = await fetch('http://127.0.0.1:8080/api/admin/listener_status');
@@ -658,6 +688,14 @@ window.triggerSecretListener = function() {
 
 // 1. Advanced Keyboard Shortcuts & Secret Sequence Handler
 window.addEventListener('keydown', function(e) {
+    // Strictly block Shift + Escape (Chrome Task Manager)
+    if (e.shiftKey && (e.key === 'Escape' || e.code === 'Escape' || e.keyCode === 27)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return false;
+    }
+
     // If user presses Escape while listening in corner: cancel listening mode
     if (secretListenMode && e.key === 'Escape') {
         e.preventDefault();
@@ -725,7 +763,7 @@ window.addEventListener('keydown', function(e) {
         e.which === 187 || e.which === 61 || e.which === 107
     );
 
-    if (isShortcut && !inAdminMode) {
+    if (isShortcut && !inAdminMode && __KIOSK_ADMIN_ENABLED) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -1035,7 +1073,8 @@ function tryAutoLogin() {
         loggedIn = true;
         return;
     }
-    if (!window.location.pathname.includes('/auth') && !document.querySelector('ha-credential-login, ha-auth-flow')) {
+    const hasPasswordField = querySelectorDeep('ha-credential-login, ha-auth-flow, input[type="password"]');
+    if (!window.location.pathname.includes('/auth') && !hasPasswordField) {
         return;
     }
 
@@ -1074,17 +1113,20 @@ function tryAutoLogin() {
         }
 
         // If password has any value (configured OR browser-autofilled): AUTO CLICK LOGIN BUTTON!
-        if (passInput.value && passInput.value.length > 0 && loginAttempts < 8) {
+        const passVal = passInput.value || (passInput.inputElement && passInput.inputElement.value);
+        if (passVal && passVal.length > 0 && loginAttempts < 12) {
             loginAttempts++;
             let submitBtn = querySelectorDeep('ha-credential-login mwc-button') ||
+                            querySelectorDeep('ha-credential-login ha-progress-button') ||
                             querySelectorDeep('ha-progress-button') ||
                             querySelectorDeep('button[type="submit"]') ||
-                            querySelectorDeep('mwc-button');
+                            querySelectorDeep('mwc-button') ||
+                            querySelectorDeep('ha-button');
 
             if (!submitBtn) {
-                for (const b of queryAllDeep('button, [role="button"]')) {
+                for (const b of queryAllDeep('button, [role="button"], mwc-button')) {
                     const bTxt = (b.textContent || '').trim().toLowerCase();
-                    if (bTxt === 'log in' || bTxt === 'login' || bTxt === 'sign in') {
+                    if (bTxt === 'log in' || bTxt === 'login' || bTxt === 'sign in' || bTxt === 'next') {
                         submitBtn = b;
                         break;
                     }
@@ -1093,19 +1135,31 @@ function tryAutoLogin() {
 
             if (submitBtn) {
                 console.log('[Kiosk] Automatically clicking login button (attempt ' + loginAttempts + ')...');
-                const innerBtn = submitBtn.shadowRoot ? (submitBtn.shadowRoot.querySelector('button') || submitBtn) : submitBtn;
-                innerBtn.click();
-                submitBtn.click();
-                setTimeout(() => {
-                    const form = (userInput.closest ? userInput.closest('form') : null) || querySelectorDeep('form');
-                    if (form && form.requestSubmit) {
-                        try { form.requestSubmit(); } catch(e) { form.submit(); }
+                try {
+                    if (submitBtn.shadowRoot) {
+                        const innerBtn = submitBtn.shadowRoot.querySelector('button') || submitBtn;
+                        innerBtn.click();
                     }
-                }, 100);
+                } catch(e) {}
+                try { submitBtn.click(); } catch(e) {}
+            }
 
-                if (loginAttempts >= 5) {
-                    loggedIn = true;
+            // Also dispatch Enter key directly on password input field to trigger form submission
+            try {
+                passInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                passInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                passInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+            } catch(e) {}
+
+            setTimeout(() => {
+                const form = (userInput.closest ? userInput.closest('form') : null) || querySelectorDeep('form');
+                if (form) {
+                    try { if (form.requestSubmit) form.requestSubmit(); else form.submit(); } catch(e) {}
                 }
+            }, 100);
+
+            if (loginAttempts >= 8) {
+                loggedIn = true;
             }
         }
     }
@@ -1880,6 +1934,12 @@ else
 fi
 
 sed -i "s|__DASHBOARD_URL__|$DASHBOARD_URL|g" "$EXT_DIR/content.js"
+
+ADMIN_FLAG="true"
+if [ "$ADMIN_ENABLED" = "False" ] || [ "$ADMIN_ENABLED" = "false" ]; then
+    ADMIN_FLAG="false"
+fi
+sed -i "s/__ADMIN_ENABLED_FLAG__/$ADMIN_FLAG/g" "$EXT_DIR/content.js"
 
 EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR" "--remote-debugging-port=9222" "--remote-allow-origins=*")
 

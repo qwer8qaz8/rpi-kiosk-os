@@ -6,6 +6,13 @@
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 
+CONFIG_FILE="/etc/kiosk/config.json"
+[ ! -f "$CONFIG_FILE" ] && CONFIG_FILE="/opt/kiosk/config.json"
+ADMIN_ENABLED=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('admin_enabled', True))" 2>/dev/null || echo "True")
+if [ "$ADMIN_ENABLED" = "False" ] || [ "$ADMIN_ENABLED" = "false" ]; then
+    exit 0
+fi
+
 if [ -f "/tmp/kiosk-admin-workstation" ]; then
     /opt/kiosk/lock-kiosk.sh
 else

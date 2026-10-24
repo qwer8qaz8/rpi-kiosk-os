@@ -754,6 +754,128 @@ def api_screen_input_mode():
     save_config(cfg)
     return jsonify({"success": True, "config": cfg})
 
+@app.route("/api/touch/status", methods=["GET"])
+def api_touch_status():
+    cfg = load_config()
+    touch_cfg = cfg.get("camera_touch", {})
+    is_active = subprocess.run(["systemctl", "is-active", "kiosk-camera-touch.service"], capture_output=True, text=True).stdout.strip() == "active"
+    return jsonify({
+        "enabled": touch_cfg.get("enabled", False),
+        "mode": touch_cfg.get("mode", "single"),
+        "dynamic_tracking": touch_cfg.get("dynamic_tracking", False),
+        "running": is_active
+    })
+
+@app.route("/api/touch/toggle", methods=["POST"])
+def api_touch_toggle():
+    cfg = load_config()
+    if "camera_touch" not in cfg:
+        cfg["camera_touch"] = {}
+    req = request.get_json(silent=True) or {}
+    new_state = req.get("enabled")
+    if new_state is None:
+        new_state = not cfg["camera_touch"].get("enabled", False)
+    cfg["camera_touch"]["enabled"] = bool(new_state)
+    save_config(cfg)
+    action = "start" if new_state else "stop"
+    subprocess.run(["sudo", "systemctl", action, "kiosk-camera-touch.service"], capture_output=True)
+    return jsonify({"success": True, "enabled": cfg["camera_touch"]["enabled"]})
+
+@app.route("/api/touch/mode", methods=["POST"])
+def api_touch_mode():
+    cfg = load_config()
+    if "camera_touch" not in cfg:
+        cfg["camera_touch"] = {}
+    req = request.get_json(silent=True) or {}
+    new_mode = req.get("mode", "single")
+    if new_mode in ["single", "dual", "kinect"]:
+        cfg["camera_touch"]["mode"] = new_mode
+        save_config(cfg)
+        subprocess.run(["sudo", "systemctl", "restart", "kiosk-camera-touch.service"], capture_output=True)
+        return jsonify({"success": True, "mode": new_mode})
+    return jsonify({"error": "Invalid mode"}), 400
+
+@app.route("/api/touch/dynamic", methods=["POST"])
+def api_touch_dynamic():
+    cfg = load_config()
+    if "camera_touch" not in cfg:
+        cfg["camera_touch"] = {}
+    req = request.get_json(silent=True) or {}
+    new_dyn = req.get("dynamic_tracking")
+    if new_dyn is None:
+        new_dyn = not cfg["camera_touch"].get("dynamic_tracking", False)
+    cfg["camera_touch"]["dynamic_tracking"] = bool(new_dyn)
+    save_config(cfg)
+    subprocess.run(["sudo", "systemctl", "restart", "kiosk-camera-touch.service"], capture_output=True)
+    return jsonify({"success": True, "dynamic_tracking": cfg["camera_touch"]["dynamic_tracking"]})
+
+@app.route("/api/touch/calibrate", methods=["POST"])
+def api_touch_calibrate():
+    env = dict(os.environ)
+    env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+    env["WAYLAND_DISPLAY"] = "wayland-0"
+    calib_script = "/opt/kiosk/camera-touch/touch_calibration.py"
+    if os.path.exists(calib_script):
+        subprocess.Popen(["python3", calib_script], env=env)
+        return jsonify({"success": True, "message": "Calibration launched on screen."})
+    return jsonify({"error": "Calibration script not found"}), 404
+
+@app.route("/api/touch/test", methods=["POST"])
+def api_touch_test():
+    env = dict(os.environ)
+    env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+    env["WAYLAND_DISPLAY"] = "wayland-0"
+    test_script = "/opt/kiosk/camera-touch/touch_test.py"
+    if os.path.exists(test_script):
+        subprocess.Popen(["python3", test_script], env=env)
+        return jsonify({"success": True, "message": "Live camera test launched on screen."})
+    return jsonify({"error": "Test script not found"}), 404
+
+@app.route("/api/chime/toggle", methods=["POST"])
+def api_chime_toggle():
+    cfg = load_config()
+    req = request.get_json(silent=True) or {}
+    new_state = req.get("enabled")
+    if new_state is None:
+        new_state = not cfg.get("startup_chime", True)
+    cfg["startup_chime"] = bool(new_state)
+    save_config(cfg)
+    return jsonify({"success": True, "startup_chime": cfg["startup_chime"]})
+
+@app.route("/api/chime/test", methods=["POST"])
+def api_chime_test():
+    if os.path.exists("/opt/kiosk/play-chime.sh"):
+        subprocess.Popen(["/bin/bash", "/opt/kiosk/play-chime.sh"])
+        return jsonify({"success": True, "message": "Chime played."})
+    return jsonify({"error": "Chime script not found"}), 404
+
+@app.route("/api/speed/mode", methods=["POST"])
+def api_speed_mode():
+    cfg = load_config()
+    req = request.get_json(silent=True) or {}
+    mode = req.get("mode", "standard")
+    if mode in ["standard", "turbo"]:
+        cfg["speed_mode"] = mode
+        if mode == "turbo":
+            cfg["admin_enabled"] = False
+        else:
+            cfg["admin_enabled"] = True
+        save_config(cfg)
+        subprocess.Popen(["sudo", "systemctl", "restart", "kiosk-display"])
+        return jsonify({"success": True, "speed_mode": mode, "admin_enabled": cfg["admin_enabled"]})
+    return jsonify({"error": "Invalid speed mode"}), 400
+
+@app.route("/api/admin/toggle_enabled", methods=["POST"])
+def api_admin_toggle_enabled():
+    cfg = load_config()
+    req = request.get_json(silent=True) or {}
+    new_state = req.get("enabled")
+    if new_state is None:
+        new_state = not cfg.get("admin_enabled", True)
+    cfg["admin_enabled"] = bool(new_state)
+    save_config(cfg)
+    return jsonify({"success": True, "admin_enabled": cfg["admin_enabled"]})
+
 @app.route("/api/camera_touch/calibrate", methods=["POST", "OPTIONS"])
 def api_camera_touch_calibrate():
     if request.method == "OPTIONS":

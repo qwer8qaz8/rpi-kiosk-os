@@ -81,8 +81,143 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     ;;
 
   admin)
-    echo -e "${CYAN}[kioskos] Switching to Admin Desktop Mode...${NC}"
-    /opt/kiosk/start-desktop.sh
+    sub="${2:-start}"
+    case "$sub" in
+      start|open)
+        echo -e "${CYAN}[kioskos] Switching to Admin Desktop Mode...${NC}"
+        /opt/kiosk/start-desktop.sh
+        ;;
+      enable|on)
+        echo -e "${GREEN}[kioskos] Enabling Admin Mode...${NC}"
+        python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['admin_enabled'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['admin_enabled'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+        echo -e "${GREEN}✓ Admin mode enabled.${NC}"
+        ;;
+      disable|off)
+        echo -e "${YELLOW}[kioskos] Disabling Admin Mode...${NC}"
+        python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['admin_enabled'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['admin_enabled'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+        echo -e "${YELLOW}✓ Admin mode disabled (on-device admin access blocked).${NC}"
+        ;;
+      status|*)
+        echo -e "${BOLD}Admin Mode Status:${NC}"
+        echo -e "  • Admin Enabled: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('admin_enabled', True))" 2>/dev/null || echo 'True')"
+        echo -e "  • Mode Active:   $([ -f /tmp/kiosk-admin-workstation ] && echo "${YELLOW}Admin Desktop Mode${NC}" || echo "${GREEN}Fullscreen Locked Kiosk${NC}")"
+        ;;
+    esac
+    ;;
+
+  speed)
+    mode="${2:-status}"
+    case "$mode" in
+      turbo|kiosk-only)
+        echo -e "${YELLOW}[kioskos] Enabling Turbo Appliance Mode (Kiosk-Only, admin listeners suppressed for maximum speed)...${NC}"
+        python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['speed_mode'] = 'turbo'
+        cfg['admin_enabled'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['speed_mode'] = 'turbo'
+        cfg['admin_enabled'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+        echo -e "${GREEN}✓ Turbo Mode active.${NC} Restarting kiosk..."
+        sudo systemctl restart kiosk-display
+        ;;
+      standard|normal)
+        echo -e "${GREEN}[kioskos] Setting Standard Mode (Admin and listeners enabled)...${NC}"
+        python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['speed_mode'] = 'standard'
+        cfg['admin_enabled'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['speed_mode'] = 'standard'
+        cfg['admin_enabled'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+        echo -e "${GREEN}✓ Standard Mode active.${NC} Restarting kiosk..."
+        sudo systemctl restart kiosk-display
+        ;;
+      status|*)
+        echo -e "${BOLD}Speed & Performance Mode:${NC}"
+        echo -e "  • Speed Mode:   $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('speed_mode', 'standard'))" 2>/dev/null || echo 'standard')"
+        echo -e "  • Admin Allowed: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('admin_enabled', True))" 2>/dev/null || echo 'True')"
+        ;;
+    esac
+    ;;
+
+  webui)
+    sub="${2:-status}"
+    case "$sub" in
+      start|on|enable)
+        echo -e "${GREEN}[kioskos] Enabling and starting Remote WebUI service...${NC}"
+        sudo systemctl enable kiosk-webui.service 2>/dev/null || true
+        sudo systemctl restart kiosk-webui.service
+        echo -e "${GREEN}✓ WebUI running at http://$(hostname -I | awk '{print $1}'):8080${NC}"
+        ;;
+      stop|off|disable)
+        echo -e "${YELLOW}[kioskos] Stopping and disabling Remote WebUI service...${NC}"
+        sudo systemctl stop kiosk-webui.service 2>/dev/null || true
+        sudo systemctl disable kiosk-webui.service 2>/dev/null || true
+        echo -e "${YELLOW}✓ WebUI disabled.${NC}"
+        ;;
+      status|*)
+        echo -e "${BOLD}Remote WebUI Status:${NC}"
+        echo -e "  • Service: $(systemctl is-active kiosk-webui 2>/dev/null || echo 'unknown')"
+        echo -e "  • Enabled: $(systemctl is-enabled kiosk-webui 2>/dev/null || echo 'unknown')"
+        echo -e "  • URL:     http://$(hostname -I | awk '{print $1}'):8080"
+        ;;
+    esac
     ;;
 
   lock)
@@ -186,9 +321,99 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
         sudo systemctl stop kiosk-camera-touch.service 2>/dev/null || true
         sudo systemctl disable kiosk-camera-touch.service 2>/dev/null || true
         ;;
+      dynamic)
+        dyn_action="${3:-status}"
+        case "$dyn_action" in
+          on|enable)
+            echo -e "${GREEN}[kioskos] Enabling Dynamic Camera Mode (subtle corner mini-markers for moving cameras)...${NC}"
+            python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+        cfg['camera_touch']['dynamic_tracking'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+        cfg['camera_touch']['dynamic_tracking'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+            sudo systemctl restart kiosk-camera-touch.service 2>/dev/null || true
+            echo -e "${GREEN}✓ Dynamic Camera tracking enabled.${NC}"
+            ;;
+          off|disable)
+            echo -e "${YELLOW}[kioskos] Disabling Dynamic Camera Mode...${NC}"
+            python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+        cfg['camera_touch']['dynamic_tracking'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+        cfg['camera_touch']['dynamic_tracking'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+            sudo systemctl restart kiosk-camera-touch.service 2>/dev/null || true
+            echo -e "${YELLOW}✓ Dynamic Camera tracking disabled.${NC}"
+            ;;
+          *)
+            echo -e "Dynamic Camera Mode: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('camera_touch', {}).get('dynamic_tracking', False))" 2>/dev/null || echo 'False')"
+            ;;
+        esac
+        ;;
+      mode)
+        new_mode="${3:-status}"
+        case "$new_mode" in
+          single|dual|kinect)
+            echo -e "${GREEN}[kioskos] Setting Camera Touch Mode to: $new_mode...${NC}"
+            python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+        cfg['camera_touch']['mode'] = '$new_mode'
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+        cfg['camera_touch']['mode'] = '$new_mode'
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+            sudo systemctl restart kiosk-camera-touch.service 2>/dev/null || true
+            echo -e "${GREEN}✓ Camera Touch Mode set to $new_mode.${NC}"
+            ;;
+          *)
+            echo -e "Active Camera Mode: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('camera_touch', {}).get('mode', 'single'))" 2>/dev/null || echo 'single')"
+            ;;
+        esac
+        ;;
       status|*)
         echo -e "${BOLD}Camera Touchscreen Status:${NC}"
         echo -e "  • Service:      $(systemctl is-active kiosk-camera-touch.service 2>/dev/null || echo 'inactive')"
+        echo -e "  • Mode:         $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('camera_touch', {}).get('mode', 'single'))" 2>/dev/null || echo 'single')"
+        echo -e "  • Dynamic Mode: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('camera_touch', {}).get('dynamic_tracking', False))" 2>/dev/null || echo 'False')"
         echo -e "  • Cameras:      $(ls /dev/video* 2>/dev/null | tr '\n' ' ' || echo 'None detected')"
         echo -e "  • Calibration:  $([ -f /etc/kiosk/camera-touch-calibration.json ] && echo "${GREEN}Calibrated${NC}" || echo "${YELLOW}Uncalibrated (Run 'kioskos touch calibrate')${NC}")"
         echo ""
@@ -196,6 +421,8 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
         echo -e "  ${GREEN}kioskos touch test [cam]${NC}      Live camera test view & tracking"
         echo -e "  ${GREEN}kioskos touch calibrate [cam]${NC} Fullscreen corner marker alignment"
         echo -e "  ${GREEN}kioskos touch start|stop${NC}      Enable/disable background service"
+        echo -e "  ${GREEN}kioskos touch dynamic on|off${NC}  Toggle subtle dynamic mini-markers"
+        echo -e "  ${GREEN}kioskos touch mode [single|dual|kinect]${NC} Select optical sensor mode"
         ;;
     esac
     ;;
@@ -206,15 +433,17 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     echo -e "Commands:"
     echo -e "  ${GREEN}status${NC}        Show current KioskOS status, dashboard URL, and services"
     echo -e "  ${GREEN}url <URL>${NC}     Update Home Assistant / Kiosk dashboard URL and reload"
-    echo -e "  ${GREEN}update${NC}        Check for updates, display native update screen & reboot"
+    echo -e "  ${GREEN}touch${NC}         Optical Camera Touchscreen (test, calibrate, dynamic, mode)"
+    echo -e "  ${GREEN}speed${NC}         Speed & Performance Mode (standard vs turbo kiosk-only)"
+    echo -e "  ${GREEN}admin${NC}         Switch into Admin Mode or enable/disable on-device admin"
+    echo -e "  ${GREEN}webui${NC}         Remote Web Interface service (on, off, status)"
     echo -e "  ${GREEN}maintenance${NC}   Toggle or set Maintenance Mode (on/off/toggle)"
-    echo -e "  ${GREEN}admin${NC}         Switch into Admin Desktop Mode (Chrome + Control Center)"
+    echo -e "  ${GREEN}chime${NC}         Startup audio chime control (test, on, off)"
     echo -e "  ${GREEN}lock${NC}          Lock back into Fullscreen Single-App Kiosk Mode"
     echo -e "  ${GREEN}restart${NC}       Restart the kiosk display compositor"
     echo -e "  ${GREEN}reboot${NC}        Reboot the Raspberry Pi system"
+    echo -e "  ${GREEN}update${NC}        Check for updates, display native update screen & reboot"
     echo -e "  ${GREEN}backup${NC}        Generate clean backup tarball without secrets"
-    echo -e "  ${GREEN}chime [test|on|off]${NC} Test or toggle KioskOS startup chime"
-    echo -e "  ${GREEN}touch [test|calibrate|start|stop]${NC} Optical Camera Touchscreen tools"
     echo ""
     ;;
 esac
