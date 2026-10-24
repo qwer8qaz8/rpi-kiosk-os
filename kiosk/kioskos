@@ -18,28 +18,76 @@ CONFIG_FILE="/etc/kiosk/config.json"
 
 show_banner() {
 cat << "EOF"
- ██╗  ██╗██╗ ██████╗ ███████╗██╗  ██╗ ██████╗ ███████╗
- ██║ ██╔╝██║██╔═══██╗██╔════╝██║ ██╔╝██╔═══██╗██╔════╝
- █████╔╝ ██║██║   ██║███████╗█████╔╝ ██║   ██║███████╗
- ██╔═██╗ ██║██║   ██║╚════██║██╔═██╗ ██║   ██║╚════██║
- ██║  ██╗██║╚██████╔╝███████║██║  ██╗╚██████╔╝███████║
- ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
-                KioskOS Appliance Edition
+  ██╗  ██╗ █████╗     ██╗  ██╗██╗ ██████╗ ███████╗██╗  ██╗
+  ██║  ██║██╔══██╗    ██║ ██╔╝██║██╔═══██╗██╔════╝██║ ██╔╝
+  ███████║███████║    █████╔╝ ██║██║   ██║███████╗█████╔╝ 
+  ██╔══██║██╔══██║    ██╔═██╗ ██║██║   ██║╚════██║██╔═██╗ 
+  ██║  ██║██║  ██║    ██║  ██╗██║╚██████╔╝███████║██║  ██╗
+  ╚═╝  ╚═╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝
+             Home Assistant Kiosk Appliance
+             8Air  •  SuperG Technologies
 EOF
 }
 
 cmd="${1:-}"
 
 case "$cmd" in
+  setup)
+    show_banner
+    echo -e "${BOLD}Home Assistant Kiosk Setup Wizard${NC}\n"
+    read -p "Enter Home Assistant Base URL [http://homeassistant.local:8123]: " ha_url
+    ha_url="${ha_url:-http://homeassistant.local:8123}"
+    
+    read -p "Enter Dashboard Path [/dashboard-kiosk/0 or /lovelace/0]: " ha_dash
+    ha_dash="${ha_dash:-/dashboard-kiosk/0}"
+    
+    ha_url="${ha_url%/}"
+    ha_dash="${ha_dash#/}"
+    full_url="${ha_url}/${ha_dash}"
+    if [[ ! "$full_url" =~ "kiosk" ]]; then
+      if [[ "$full_url" =~ \? ]]; then full_url="${full_url}&kiosk"; else full_url="${full_url}?kiosk"; fi
+    fi
+    
+    read -p "Home Assistant Kiosk Username (optional for auto-login): " ha_user
+    read -s -p "Home Assistant Kiosk Password (optional for auto-login): " ha_pass
+    echo ""
+    
+    python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['dashboard_url'] = '$full_url'
+        if '$ha_user': cfg['ha_username'] = '$ha_user'
+        if '$ha_pass': cfg['ha_password'] = '$ha_pass'
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['dashboard_url'] = '$full_url'
+        if '$ha_user': cfg['ha_username'] = '$ha_user'
+        if '$ha_pass': cfg['ha_password'] = '$ha_pass'
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+    echo -e "\n${GREEN}✓ Configuration saved successfully!${NC}"
+    echo -e "Dashboard URL: ${CYAN}$full_url${NC}"
+    echo -e "Restarting display..."
+    sudo systemctl restart kiosk-display
+    ;;
+
   status)
     show_banner
-    echo -e "${BOLD}System Status:${NC}"
-    echo -e "  • Dashboard URL: ${CYAN}$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('dashboard_url', 'Not configured'))" 2>/dev/null || echo 'Unknown')${NC}"
-    echo -e "  • Screen Power:  $(sudo /usr/local/bin/kiosk-screen status 2>/dev/null || echo 'ON')"
-    echo -e "  • IP Address:    ${GREEN}$(hostname -I | awk '{print $1}')${NC}"
-    echo -e "  • Kiosk Display: $(systemctl is-active kiosk-display 2>/dev/null || echo 'unknown')"
-    echo -e "  • Kiosk WebUI:   $(systemctl is-active kiosk-webui 2>/dev/null || echo 'unknown') (http://$(hostname -I | awk '{print $1}'):8080)"
-    echo -e "  • Mode:          $([ -f /tmp/kiosk-admin-workstation ] && echo "${YELLOW}Admin Desktop Mode${NC}" || echo "${GREEN}Fullscreen Locked Kiosk${NC}")"
+    echo -e "${BOLD}Appliance Status:${NC}"
+    echo -e "  • Dashboard URL:  ${CYAN}$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('dashboard_url', 'Not configured'))" 2>/dev/null || echo 'Unknown')${NC}"
+    echo -e "  • Screen Power:   $(sudo /usr/local/bin/kiosk-screen status 2>/dev/null || echo 'ON')"
+    echo -e "  • IP Address:     ${GREEN}$(hostname -I | awk '{print $1}')${NC}"
+    echo -e "  • Display Engine: $(systemctl is-active kiosk-display 2>/dev/null || echo 'unknown')"
+    echo -e "  • Chime Service:  $(systemctl is-active kiosk-chime 2>/dev/null || echo 'unknown') (http://$(hostname -I | awk '{print $1}'):8124/chime?sound=bing)"
+    echo -e "  • Mode:           ${GREEN}Single-Purpose Lockdown Fullscreen${NC}"
     ;;
 
   url)
@@ -220,6 +268,34 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     esac
     ;;
 
+  mcp)
+    sub="${2:-run}"
+    case "$sub" in
+      run|start)
+        python3 /opt/kiosk/kiosk-mcp.py
+        ;;
+      test)
+        echo -e "${CYAN}[kioskos] Testing MCP Server Tools...${NC}"
+        echo '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}' | python3 /opt/kiosk/kiosk-mcp.py
+        echo '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}' | python3 /opt/kiosk/kiosk-mcp.py
+        ;;
+      status|*)
+        echo -e "${BOLD}KioskOS Model Context Protocol (MCP) Server:${NC}"
+        echo -e "  • Path:        /opt/kiosk/kiosk-mcp.py"
+        echo -e "  • Protocol:    MCP JSON-RPC 2.0 (stdio)"
+        echo -e "  • Tools:       kiosk_get_status, kiosk_set_url, kiosk_set_power,"
+        echo -e "                 kiosk_set_brightness, kiosk_set_rotation, kiosk_speed_mode,"
+        echo -e "                 kiosk_touch_control, kiosk_trigger_chime, kiosk_reboot"
+        echo ""
+        echo -e "To connect from Claude Desktop / Antigravity / AI assistant, add to mcpServers:"
+        echo -e '  "kioskos": {'
+        echo -e '    "command": "ssh",'
+        echo -e '    "args": ["pi@<PI_IP>", "kioskos mcp run"]'
+        echo -e '  }'
+        ;;
+    esac
+    ;;
+
   lock)
     echo -e "${CYAN}[kioskos] Locking back to Fullscreen Kiosk Mode...${NC}"
     /opt/kiosk/lock-kiosk.sh
@@ -248,10 +324,14 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     ;;
 
   chime)
-    action="${2:-test}"
-    case "$action" in
+    sound="${2:-bing}"
+    case "$sound" in
+      bing|boot|unlock|lock|alert|touch)
+        echo -e "${CYAN}[kioskos] Playing $sound chime...${NC}"
+        /opt/kiosk/play-chime.sh "$sound"
+        ;;
       on|enable)
-        echo -e "${GREEN}[kioskos] Enabling startup audio chime...${NC}"
+        echo -e "${GREEN}[kioskos] Enabling audio chime...${NC}"
         python3 -c "
 import json
 for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
@@ -269,10 +349,10 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
         with open(p, 'w') as f: json.dump(cfg, f, indent=2)
     except Exception: pass
 "
-        /opt/kiosk/play-chime.sh
+        /opt/kiosk/play-chime.sh bing
         ;;
       off|disable)
-        echo -e "${YELLOW}[kioskos] Disabling startup audio chime...${NC}"
+        echo -e "${YELLOW}[kioskos] Disabling audio chime...${NC}"
         python3 -c "
 import json
 for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
@@ -291,9 +371,9 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     except Exception: pass
 "
         ;;
-      test|play|*)
-        echo -e "${CYAN}[kioskos] Playing startup audio chime...${NC}"
-        /opt/kiosk/play-chime.sh
+      *)
+        echo -e "${CYAN}[kioskos] Playing chime: $sound...${NC}"
+        /opt/kiosk/play-chime.sh "$sound"
         ;;
     esac
     ;;
@@ -303,13 +383,13 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     case "$subcmd" in
       test)
         cam_id="${3:-0}"
-        echo -e "${CYAN}[kioskos] Launching Camera Touch Test (Camera $cam_id)...${NC}"
-        python3 /opt/kiosk/camera-touch/touch_test.py "$cam_id"
+        echo -e "${CYAN}[kioskos] Launching Camera Touch Test on display (Camera $cam_id)...${NC}"
+        WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}" python3 /opt/kiosk/camera-touch/touch_test.py "$cam_id"
         ;;
       calibrate)
         cam_id="${3:-0}"
-        echo -e "${CYAN}[kioskos] Launching Fullscreen Alignment & Marker Calibration (Camera $cam_id)...${NC}"
-        python3 /opt/kiosk/camera-touch/touch_calibration.py "$cam_id"
+        echo -e "${CYAN}[kioskos] Launching Fullscreen Alignment & Marker Calibration on display (Camera $cam_id)...${NC}"
+        WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}" python3 /opt/kiosk/camera-touch/touch_calibration.py "$cam_id"
         ;;
       start|on)
         echo -e "${GREEN}[kioskos] Starting Camera Touchscreen Service...${NC}"
@@ -427,23 +507,46 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     esac
     ;;
 
+  kinect)
+    sub="${2:-status}"
+    case "$sub" in
+      tilt)
+        degs="${3:-0}"
+        python3 /opt/kiosk/camera-touch/kinect_controller.py tilt "$degs"
+        ;;
+      realign|level|center)
+        python3 /opt/kiosk/camera-touch/kinect_controller.py realign
+        ;;
+      led)
+        state="${3:-off}"
+        python3 /opt/kiosk/camera-touch/kinect_controller.py "$state"
+        ;;
+      status|*)
+        echo -e "${BOLD}Xbox Kinect Hardware Status:${NC}"
+        lsusb | grep -i -E "kinect|045e" || echo -e "  • ${YELLOW}No Xbox Kinect detected on USB bus.${NC}"
+        echo ""
+        echo -e "Subcommands:"
+        echo -e "  ${GREEN}kioskos kinect tilt <degs>${NC}       Tilt motor (-30° to +30°)"
+        echo -e "  ${GREEN}kioskos kinect realign${NC}           Auto-level motor to 0° center"
+        echo -e "  ${GREEN}kioskos kinect led [off|green]${NC}   Control status LED"
+        ;;
+    esac
+    ;;
+
   *)
     show_banner
     echo -e "${BOLD}Usage:${NC} kioskos <command> [options]\n"
     echo -e "Commands:"
-    echo -e "  ${GREEN}status${NC}        Show current KioskOS status, dashboard URL, and services"
-    echo -e "  ${GREEN}url <URL>${NC}     Update Home Assistant / Kiosk dashboard URL and reload"
+    echo -e "  ${GREEN}setup${NC}         Interactive setup wizard for Home Assistant Kiosk"
+    echo -e "  ${GREEN}status${NC}        Show current Home Assistant Kiosk status & telemetry"
+    echo -e "  ${GREEN}url <URL>${NC}     Update Home Assistant dashboard URL and reload"
+    echo -e "  ${GREEN}chime [name]${NC}  Play audio chime (bing, boot, alert, unlock, lock, touch)"
     echo -e "  ${GREEN}touch${NC}         Optical Camera Touchscreen (test, calibrate, dynamic, mode)"
-    echo -e "  ${GREEN}speed${NC}         Speed & Performance Mode (standard vs turbo kiosk-only)"
-    echo -e "  ${GREEN}admin${NC}         Switch into Admin Mode or enable/disable on-device admin"
-    echo -e "  ${GREEN}webui${NC}         Remote Web Interface service (on, off, status)"
-    echo -e "  ${GREEN}maintenance${NC}   Toggle or set Maintenance Mode (on/off/toggle)"
-    echo -e "  ${GREEN}chime${NC}         Startup audio chime control (test, on, off)"
-    echo -e "  ${GREEN}lock${NC}          Lock back into Fullscreen Single-App Kiosk Mode"
-    echo -e "  ${GREEN}restart${NC}       Restart the kiosk display compositor"
-    echo -e "  ${GREEN}reboot${NC}        Reboot the Raspberry Pi system"
-    echo -e "  ${GREEN}update${NC}        Check for updates, display native update screen & reboot"
-    echo -e "  ${GREEN}backup${NC}        Generate clean backup tarball without secrets"
+    echo -e "  ${GREEN}kinect${NC}        Xbox Kinect hardware control (tilt, realign, led)"
+    echo -e "  ${GREEN}mcp${NC}           Model Context Protocol (MCP) server for AI assistants"
+    echo -e "  ${GREEN}restart${NC}       Restart the kiosk display engine"
+    echo -e "  ${GREEN}reboot${NC}        Reboot the Raspberry Pi appliance"
+    echo -e "  ${GREEN}update${NC}        Install latest appliance update and reload"
     echo ""
     ;;
 esac

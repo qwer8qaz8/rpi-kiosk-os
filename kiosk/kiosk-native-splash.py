@@ -40,7 +40,7 @@ class NativeSplashWindow(Gtk.Window):
         self.ready_to_exit = False
         self.pulse_phase = 0.0
 
-        self.set_title("KioskOS Boot Splash")
+        self.set_title("Home Assistant Kiosk Boot Splash")
         self.set_decorated(False)
         self.fullscreen()
         self.set_app_paintable(True)
@@ -48,12 +48,12 @@ class NativeSplashWindow(Gtk.Window):
         self.connect("destroy", Gtk.main_quit)
 
         # Main Layout
-        self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         self.main_box.set_valign(Gtk.Align.CENTER)
         self.main_box.set_halign(Gtk.Align.CENTER)
         self.add(self.main_box)
 
-        # Drawing Area for custom Vector Cyber-Hex Emblem
+        # Drawing Area for custom Home Assistant Display Emblem
         self.emblem_area = Gtk.DrawingArea()
         self.emblem_area.set_size_request(160, 160)
         self.emblem_area.connect("draw", self.draw_emblem)
@@ -62,14 +62,13 @@ class NativeSplashWindow(Gtk.Window):
         # Title Label
         self.title_label = Gtk.Label()
         self.title_label.set_markup(
-            '<span font="28" weight="bold" letter_spacing="4000" color="#ffffff">KIOSK</span>'
-            '<span font="28" weight="bold" letter_spacing="4000" color="#34d399">OS</span>'
+            '<span font="30" weight="heavy" color="#ffffff">HOME ASSISTANT <span color="#18bcf2">KIOSK</span></span>'
         )
         self.main_box.pack_start(self.title_label, False, False, 0)
 
         # Subtitle / Status Label
         self.status_label = Gtk.Label()
-        self.status_label.set_markup('<span font="13" color="#94a3b8">Starting system environment...</span>')
+        self.status_label.set_markup('<span font="13" color="#94a3b8">Connecting to Home Assistant...</span>')
         self.main_box.pack_start(self.status_label, False, False, 0)
 
         # Sleek Progress Bar
@@ -77,6 +76,11 @@ class NativeSplashWindow(Gtk.Window):
         self.progress_bar.set_size_request(340, 6)
         self.progress_bar.set_fraction(0.15)
         self.main_box.pack_start(self.progress_bar, False, False, 10)
+
+        # Credit Label
+        self.credit_label = Gtk.Label()
+        self.credit_label.set_markup('<span font="11" color="#475569">8Air  •  SuperG Technologies</span>')
+        self.main_box.pack_start(self.credit_label, False, False, 4)
 
         # CSS Styling
         css_provider = Gtk.CssProvider()
@@ -91,7 +95,7 @@ class NativeSplashWindow(Gtk.Window):
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
         progressbar progress {
-            background: linear-gradient(90deg, #059669, #34d399);
+            background: linear-gradient(90deg, #0284c7, #18bcf2);
             border-radius: 6px;
             min-height: 6px;
         }
@@ -122,48 +126,60 @@ class NativeSplashWindow(Gtk.Window):
         alloc = widget.get_allocation()
         cx = alloc.width / 2.0
         cy = alloc.height / 2.0
-        r = 60.0
 
-        # Outer pulsing glow ring
+        # Outer pulsing cyan glow
         glow_alpha = 0.25 + 0.15 * math.sin(self.pulse_phase)
-        cr.set_source_rgba(0.2, 0.83, 0.6, glow_alpha * 0.4)
-        cr.arc(cx, cy, r + 16 + 4 * math.sin(self.pulse_phase), 0, 2 * math.pi)
+        cr.set_source_rgba(0.09, 0.74, 0.95, glow_alpha * 0.35)
+        cr.arc(cx, cy, 68 + 4 * math.sin(self.pulse_phase), 0, 2 * math.pi)
         cr.fill()
 
-        # Hexagon Points
-        cr.set_line_width(3.0)
-        cr.set_source_rgba(0.2, 0.83, 0.6, 0.9)  # #34d399
-
-        points = []
-        for i in range(6):
-            angle = math.radians(60 * i - 30)
-            px = cx + r * math.cos(angle)
-            py = cy + r * math.sin(angle)
-            points.append((px, py))
-
-        cr.move_to(points[0][0], points[0][1])
-        for px, py in points[1:]:
-            cr.line_to(px, py)
+        # Display Bezel (Rounded Box)
+        bw, bh = 110.0, 80.0
+        bx0 = cx - bw / 2.0
+        by0 = cy - bh / 2.0 - 6.0
+        
+        # Rounded rect path
+        rad = 12.0
+        cr.new_sub_path()
+        cr.arc(bx0 + bw - rad, by0 + rad, rad, -math.pi/2, 0)
+        cr.arc(bx0 + bw - rad, by0 + bh - rad, rad, 0, math.pi/2)
+        cr.arc(bx0 + rad, by0 + bh - rad, rad, math.pi/2, math.pi)
+        cr.arc(bx0 + rad, by0 + rad, rad, math.pi, 3*math.pi/2)
         cr.close_path()
 
-        # Fill hexagon with deep translucent emerald
-        cr.set_source_rgba(0.06, 0.3, 0.22, 0.4)
+        # Fill display screen with dark glass
+        cr.set_source_rgba(0.05, 0.08, 0.16, 0.9)
         cr.fill_preserve()
-
-        # Hexagon border
-        cr.set_source_rgba(0.2, 0.83, 0.6, 0.95)
+        # Cyan border
+        cr.set_line_width(2.5)
+        cr.set_source_rgba(0.09, 0.74, 0.95, 0.85)
         cr.stroke()
 
-        # Lightning Bolt symbol in center
-        cr.set_line_width(3.5)
+        # Home Assistant House Symbol inside display
+        cr.set_line_width(3.0)
         cr.set_source_rgba(1.0, 1.0, 1.0, 0.95)
-        cr.move_to(cx + 4, cy - 28)
-        cr.line_to(cx - 16, cy + 4)
-        cr.line_to(cx - 2, cy + 4)
-        cr.line_to(cx - 6, cy + 30)
-        cr.line_to(cx + 18, cy - 2)
-        cr.line_to(cx + 4, cy - 2)
+        
+        # Roof
+        cr.move_to(cx, by0 + 16)
+        cr.line_to(cx - 24, by0 + 38)
+        cr.line_to(cx - 18, by0 + 38)
+        cr.line_to(cx - 18, by0 + 60)
+        cr.line_to(cx + 18, by0 + 60)
+        cr.line_to(cx + 18, by0 + 38)
+        cr.line_to(cx + 24, by0 + 38)
         cr.close_path()
+        cr.set_source_rgba(0.09, 0.74, 0.95, 0.25)
+        cr.fill_preserve()
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.95)
+        cr.stroke()
+
+        # Small chimney
+        cr.set_line_width(2.0)
+        cr.move_to(cx + 12, by0 + 26)
+        cr.line_to(cx + 12, by0 + 19)
+        cr.line_to(cx + 17, by0 + 19)
+        cr.line_to(cx + 17, by0 + 30)
+        cr.stroke()
 
         cr.set_source_rgba(0.2, 0.83, 0.6, 0.9)
         cr.fill_preserve()

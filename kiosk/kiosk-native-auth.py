@@ -67,23 +67,27 @@ class NativeAuthDialog(Gtk.Window):
             border-radius: 8px;
             padding: 10px 18px;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 700;
+        }
+        button label, button {
+            color: #ffffff !important;
+            font-weight: 700 !important;
         }
         button.cancel-btn {
-            background-color: #334155;
-            color: #cbd5e1;
-            border: none;
+            background-color: #1e293b;
+            border: 1.5px solid #475569;
         }
         button.cancel-btn:hover {
-            background-color: #475569;
+            background-color: #334155;
+            border-color: #64748b;
         }
         button.unlock-btn {
             background-color: #2563eb;
-            color: #ffffff;
-            border: none;
+            border: 1.5px solid #60a5fa;
         }
         button.unlock-btn:hover {
             background-color: #1d4ed8;
+            border-color: #93c5fd;
         }
         """
         css_provider.load_from_data(css)
@@ -152,19 +156,26 @@ class NativeAuthDialog(Gtk.Window):
         return False
 
     def on_unlock_clicked(self, widget):
+        self.config = load_config()
         pw = self.entry.get_text().strip()
+        norm_pw = pw.replace(" ", "").lower()
+
         configured_pin = str(self.config.get("webui_pin", "")).strip()
+        configured_ha_pw = str(self.config.get("ha_password", "")).strip()
+        configured_admin_pw = str(self.config.get("admin_password", "")).strip()
 
-        # Valid default keys or configured PIN
+        # Build list of valid normalized keys
         valid_keys = ["kiosk", "admin", "1234"]
-        if configured_pin:
-            valid_keys.append(configured_pin.lower())
+        for p in [configured_pin, configured_ha_pw, configured_admin_pw]:
+            if p:
+                valid_keys.append(p.lower())
+                valid_keys.append(p.replace(" ", "").lower())
 
-        if pw.lower() in valid_keys:
-            self.error_lbl.set_markup('<span font="12" color="#34d399">✓ Unlocking Desktop Mode...</span>')
-            GLib.timeout_add(200, self.launch_desktop)
+        if norm_pw in valid_keys or pw.lower() in valid_keys:
+            self.error_lbl.set_markup('<span font="12" weight="bold" color="#34d399">✓ Unlocking Desktop Mode...</span>')
+            GLib.timeout_add(150, self.launch_desktop)
         else:
-            self.error_lbl.set_markup('<span font="12" color="#f87171">Incorrect password or PIN.</span>')
+            self.error_lbl.set_markup('<span font="12" weight="bold" color="#f87171">Incorrect password or PIN.</span>')
             self.entry.set_text("")
             self.entry.grab_focus()
 

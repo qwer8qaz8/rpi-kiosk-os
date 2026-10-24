@@ -831,6 +831,30 @@ def api_touch_test():
         return jsonify({"success": True, "message": "Live camera test launched on screen."})
     return jsonify({"error": "Test script not found"}), 404
 
+@app.route("/api/kinect/tilt", methods=["POST"])
+def api_kinect_tilt():
+    req = request.get_json(silent=True) or {}
+    degs = req.get("degrees", 0)
+    try:
+        degs = float(degs)
+        degs = max(-30.0, min(30.0, degs))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid degrees"}), 400
+    res = subprocess.run(["python3", "/opt/kiosk/camera-touch/kinect_controller.py", "tilt", str(degs)], capture_output=True, text=True)
+    return jsonify({"success": res.returncode == 0, "degrees": degs, "output": res.stdout.strip()})
+
+@app.route("/api/kinect/led", methods=["POST"])
+def api_kinect_led():
+    req = request.get_json(silent=True) or {}
+    state = req.get("state", "off").lower()
+    res = subprocess.run(["python3", "/opt/kiosk/camera-touch/kinect_controller.py", state], capture_output=True, text=True)
+    return jsonify({"success": res.returncode == 0, "state": state, "output": res.stdout.strip()})
+
+@app.route("/api/kinect/realign", methods=["POST"])
+def api_kinect_realign():
+    res = subprocess.run(["python3", "/opt/kiosk/camera-touch/kinect_controller.py", "realign"], capture_output=True, text=True)
+    return jsonify({"success": res.returncode == 0, "output": res.stdout.strip()})
+
 @app.route("/api/chime/toggle", methods=["POST"])
 def api_chime_toggle():
     cfg = load_config()

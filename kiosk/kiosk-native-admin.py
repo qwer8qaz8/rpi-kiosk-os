@@ -51,72 +51,109 @@ class NativeAdminWindow(Gtk.Window):
         css_provider = Gtk.CssProvider()
         css = b"""
         window {
-            background-color: #0f172a;
-            color: #f8fafc;
+            background-color: #030712;
+            color: #ffffff;
         }
         .header-box {
-            background-color: #1e293b;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 16px 24px;
+            background-color: #0f172a;
+            border-bottom: 2px solid #334155;
+            padding: 18px 24px;
         }
         .section-card {
-            background-color: #1e293b;
+            background-color: #0f172a;
             border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 18px;
+            border: 1.5px solid #334155;
+            padding: 20px;
             margin-bottom: 16px;
         }
-        .section-title {
-            font-size: 15px;
-            font-weight: bold;
-            color: #38bdf8;
-            margin-bottom: 8px;
+        label {
+            color: #f8fafc !important;
+            font-size: 13px;
         }
         entry {
-            background-color: #0f172a;
-            color: #ffffff;
-            border: 1px solid #334155;
+            background-color: #1e293b;
+            color: #ffffff !important;
+            border: 1.5px solid #475569;
             border-radius: 8px;
-            padding: 8px 12px;
+            padding: 10px 14px;
+            font-size: 14px;
+            font-weight: 500;
         }
         entry:focus {
             border-color: #38bdf8;
+            background-color: #0f172a;
         }
+
+        /* High-Contrast Universal Button Baseline */
         button {
-            background-color: #334155;
-            color: #ffffff;
-            border: none;
             border-radius: 8px;
-            padding: 8px 16px;
-            font-weight: 600;
+            padding: 10px 18px;
+            font-weight: 700;
+            font-size: 13px;
+            background-color: #1e293b;
+            border: 1.5px solid #475569;
+        }
+        button, button label, button * {
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            font-size: 13px !important;
         }
         button:hover {
-            background-color: #475569;
+            background-color: #334155;
+            border-color: #64748b;
         }
-        button.primary-btn {
+
+        /* Action Buttons (Calibrate, Test, Restart, Update) */
+        button.action-btn {
+            background-color: #1e3a5f;
+            border: 1.5px solid #38bdf8;
+        }
+        button.action-btn:hover {
             background-color: #0284c7;
+            border-color: #7dd3fc;
+        }
+
+        /* Primary Button (Save URL) */
+        button.primary-btn {
+            background-color: #2563eb;
+            border: 1.5px solid #60a5fa;
         }
         button.primary-btn:hover {
-            background-color: #0369a1;
+            background-color: #1d4ed8;
+            border-color: #93c5fd;
         }
+
+        /* Success Button (Return to Kiosk) */
         button.success-btn {
             background-color: #059669;
+            border: 1.5px solid #34d399;
         }
         button.success-btn:hover {
             background-color: #047857;
+            border-color: #6ee7b7;
         }
+
+        /* Danger Button (Reboot) */
         button.danger-btn {
-            background-color: #dc2626;
+            background-color: #b91c1c;
+            border: 1.5px solid #f87171;
         }
         button.danger-btn:hover {
-            background-color: #b91c1c;
+            background-color: #991b1b;
+            border-color: #fca5a5;
         }
+
         .telemetry-bar {
             background-color: #020617;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 10px 24px;
-            font-size: 12px;
-            color: #94a3b8;
+            border-top: 1.5px solid #1e293b;
+            padding: 12px 24px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #cbd5e1;
+        }
+        .telemetry-bar label {
+            color: #94a3b8 !important;
+            font-weight: 600 !important;
         }
         """
         css_provider.load_from_data(css)
@@ -289,14 +326,40 @@ class NativeAdminWindow(Gtk.Window):
         t_btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
 
         calib_btn = Gtk.Button(label="🎯 Calibrate Markers & Align Screen")
+        calib_btn.get_style_context().add_class("action-btn")
         calib_btn.connect("clicked", self.on_calibrate_touch)
         t_btn_box.pack_start(calib_btn, True, True, 0)
 
         test_btn = Gtk.Button(label="📹 Live Test Camera Tracking")
+        test_btn.get_style_context().add_class("action-btn")
         test_btn.connect("clicked", self.on_test_camera)
         t_btn_box.pack_start(test_btn, True, True, 0)
 
         card_touch.pack_start(t_btn_box, False, False, 0)
+
+        # Kinect Hardware Actions
+        k_btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        k_level_btn = Gtk.Button(label="📐 Level Kinect (0°)")
+        k_level_btn.get_style_context().add_class("action-btn")
+        k_level_btn.connect("clicked", lambda w: subprocess.run(["python3", "/opt/kiosk/camera-touch/kinect_controller.py", "tilt", "0"]))
+        k_btn_box.pack_start(k_level_btn, True, True, 0)
+
+        k_up_btn = Gtk.Button(label="🔼 Tilt Up (+15°)")
+        k_up_btn.get_style_context().add_class("action-btn")
+        k_up_btn.connect("clicked", lambda w: subprocess.run(["python3", "/opt/kiosk/camera-touch/kinect_controller.py", "tilt", "15"]))
+        k_btn_box.pack_start(k_up_btn, True, True, 0)
+
+        k_down_btn = Gtk.Button(label="🔽 Tilt Down (-15°)")
+        k_down_btn.get_style_context().add_class("action-btn")
+        k_down_btn.connect("clicked", lambda w: subprocess.run(["python3", "/opt/kiosk/camera-touch/kinect_controller.py", "tilt", "-15"]))
+        k_btn_box.pack_start(k_down_btn, True, True, 0)
+
+        k_off_btn = Gtk.Button(label="💡 Kinect LED Off")
+        k_off_btn.get_style_context().add_class("action-btn")
+        k_off_btn.connect("clicked", lambda w: subprocess.run(["python3", "/opt/kiosk/camera-touch/kinect_controller.py", "off"]))
+        k_btn_box.pack_start(k_off_btn, True, True, 0)
+
+        card_touch.pack_start(k_btn_box, False, False, 0)
         content_box.pack_start(card_touch, False, False, 0)
 
         # CARD 4: Maintenance & System Actions
@@ -311,10 +374,12 @@ class NativeAdminWindow(Gtk.Window):
         actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
 
         update_btn = Gtk.Button(label="🚀 Install System Update")
+        update_btn.get_style_context().add_class("action-btn")
         update_btn.connect("clicked", self.on_run_update)
         actions_box.pack_start(update_btn, True, True, 0)
 
         restart_disp_btn = Gtk.Button(label="🔄 Restart Kiosk Display")
+        restart_disp_btn.get_style_context().add_class("action-btn")
         restart_disp_btn.connect("clicked", self.on_restart_display)
         actions_box.pack_start(restart_disp_btn, True, True, 0)
 

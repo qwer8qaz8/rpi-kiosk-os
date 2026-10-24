@@ -608,6 +608,16 @@
           📹 Live Camera Test
         </button>
       </div>
+
+      <div id="kinectControlsSection" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+        <strong style="color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">🎮 Kinect Hardware Controls</strong>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+          <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 6px;" onclick="kinectRealign()">📐 Level (0°)</button>
+          <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 6px;" onclick="kinectTilt(15)">🔼 Tilt +15°</button>
+          <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 6px;" onclick="kinectTilt(-15)">🔽 Tilt -15°</button>
+          <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 6px;" onclick="kinectLed('off')">💡 LED Off</button>
+        </div>
+      </div>
     </div>
 
     <!-- Appliance Speed & Kiosk-Only Mode Card -->
@@ -980,6 +990,47 @@
         showToast(d.message || "Live camera test opened");
       } catch (e) {
         showToast("Error launching test", true);
+      }
+    }
+
+    async function kinectTilt(degs) {
+      showToast("Tilting Kinect to " + degs + "°...");
+      try {
+        const res = await fetch("/api/kinect/tilt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ degrees: degs })
+        });
+        const d = await res.json();
+        showToast(d.success ? "Kinect tilt set to " + degs + "°" : (d.error || "Tilt error"), !d.success);
+      } catch (e) {
+        showToast("Error communicating with Kinect", true);
+      }
+    }
+
+    async function kinectRealign() {
+      showToast("Auto-leveling Kinect motor to 0°...");
+      try {
+        const res = await fetch("/api/kinect/realign", { method: "POST" });
+        const d = await res.json();
+        showToast(d.success ? "Kinect realigned to 0°" : (d.error || "Realign error"), !d.success);
+      } catch (e) {
+        showToast("Error communicating with Kinect", true);
+      }
+    }
+
+    async function kinectLed(state) {
+      showToast("Setting Kinect LED to " + state + "...");
+      try {
+        const res = await fetch("/api/kinect/led", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state: state })
+        });
+        const d = await res.json();
+        showToast(d.success ? "Kinect LED set to " + state : (d.error || "LED error"), !d.success);
+      } catch (e) {
+        showToast("Error communicating with Kinect", true);
       }
     }
 

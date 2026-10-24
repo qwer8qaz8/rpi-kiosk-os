@@ -44,6 +44,9 @@ class CalibrationApp:
             print("[calibration] Error: OpenCV is required for calibration.")
             return
 
+        import subprocess
+        subprocess.run(["sudo", "systemctl", "stop", "kiosk-camera-touch.service"], capture_output=True)
+
         try:
             self.cam = SingleCameraSource(device_index=self.camera_id)
             self.cam.start()

@@ -30,6 +30,13 @@ def main():
         print("[error] OpenCV (python3-opencv) is required to run camera testing.")
         sys.exit(1)
 
+    # Release any background service holding the video device
+    import subprocess
+    was_running = subprocess.run(["systemctl", "is-active", "kiosk-camera-touch.service"], capture_output=True, text=True).stdout.strip() == "active"
+    if was_running:
+        print("• Pausing background touch daemon to access camera stream...")
+        subprocess.run(["sudo", "systemctl", "stop", "kiosk-camera-touch.service"], capture_output=True)
+
     print(f"• Opening camera device {camera_id}...")
     try:
         source = SingleCameraSource(device_index=camera_id, width=640, height=480, fps=30)

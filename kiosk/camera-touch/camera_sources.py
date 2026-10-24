@@ -27,13 +27,39 @@ class SingleCameraSource:
         if cv2 is None:
             raise RuntimeError("OpenCV is required for camera capture.")
 
-        # Try V4L2 backend first on Linux
-        self.cap = cv2.VideoCapture(self.device_index, cv2.CAP_V4L2)
-        if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(self.device_index)
+        import glob
+        devices_to_try = [self.device_index]
+        for dev in sorted(glob.glob("/dev/video*")):
+            try:
+                idx = int(dev.replace("/dev/video", ""))
+                if idx not in devices_to_try:
+                    devices_to_try.append(idx)
+            except Exception:
+                pass
 
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Could not open camera device {self.device_index}")
+        for dev_idx in devices_to_try:
+            for backend in [cv2.CAP_V4L2, None]:
+                try:
+                    if backend is not None:
+                        self.cap = cv2.VideoCapture(dev_idx, backend)
+                    else:
+                        self.cap = cv2.VideoCapture(dev_idx)
+                    if self.cap.isOpened():
+                        self.device_index = dev_idx
+                        break
+                except Exception:
+                    continue
+            if self.cap and self.cap.isOpened():
+                break
+
+        if not self.cap or not self.cap.isOpened():
+            raise RuntimeError(f"Could not open camera device (tried: {devices_to_try})")
+
+        # Crucial for USB webcams on Raspberry Pi: Request MJPG to conserve USB bus bandwidth and trigger LED
+        try:
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        except Exception:
+            pass
 
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)

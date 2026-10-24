@@ -1,49 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <labwc_config>
   <core>
-    <decoration>server</decoration>
-    <gap>8</gap>
+    <decoration>none</decoration>
+    <gap>0</gap>
   </core>
 
-  <theme>
-    <name>macOS</name>
-    <cornerRadius>10</cornerRadius>
-    <titlebar>
-      <!-- Authentic macOS layout: Close, Iconify (Minimize), Maximize on the LEFT -->
-      <layout>close,iconify,max:title</layout>
-    </titlebar>
-    <font name="sans-serif" size="11" />
-  </theme>
-
   <windowRules>
-    <!-- Fullscreen single-app Kiosk Mode: No borders, no titlebars, cover full display -->
-    <windowRule identifier="chromium-kiosk" serverDecoration="no">
+    <!-- Home Assistant Kiosk Mode: No borders, no titlebars, cover full display -->
+    <windowRule identifier="*" serverDecoration="no">
       <action name="Maximize" />
     </windowRule>
-
-    <!-- Admin Desktop standalone windows: Framed with macOS traffic lights -->
-    <windowRule identifier="chromium" serverDecoration="yes" />
-    <windowRule identifier="foot" serverDecoration="yes" />
   </windowRules>
 
   <keyboard>
-    <!-- Toggle Admin / Unlock Shortcut: Ctrl+Alt+= and variations -->
-    <keybind key="C-A-equal">
-      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
-    </keybind>
-    <keybind key="C-equal">
-      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
-    </keybind>
-    <keybind key="C-A-plus">
-      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
-    </keybind>
-    <keybind key="C-A-KP_Add">
-      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
-    </keybind>
-    <keybind key="C-A-KP_Equal">
-      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
-    </keybind>
-
     <!-- Block Shift + Escape (Chrome Task Manager) -->
     <keybind key="S-Escape">
       <action name="None" />
@@ -52,10 +21,6 @@
     <!-- Restart Kiosk Keybind: Ctrl+Alt+R -->
     <keybind key="C-A-r">
       <action name="Execute" command="/usr/bin/sudo /bin/systemctl restart kiosk-display" />
-    </keybind>
-    <!-- Emergency Lock Keybind: Ctrl+Alt+L -->
-    <keybind key="C-A-l">
-      <action name="Execute" command="/opt/kiosk/lock-kiosk.sh" />
     </keybind>
     <!-- Reboot Keybind: Ctrl+Alt+Delete -->
     <keybind key="C-A-Delete">

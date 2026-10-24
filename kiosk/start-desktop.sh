@@ -9,6 +9,7 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 
 echo "[kiosk-desktop] Transitioning to Real Linux Desktop Environment..."
 touch /tmp/kiosk-admin-workstation
+/opt/kiosk/play-chime.sh unlock 2>/dev/null || true
 
 # Relax lockdown policy so full browser and networking are unrestricted
 sudo rm -f /etc/chromium/policies/managed/kiosk_security_policy.json \
@@ -25,12 +26,11 @@ if command -v swaybg >/dev/null 2>&1; then
     swaybg -c "#030712" &
 fi
 
-# 3. Launch bottom taskbar / panel
+# 3. Launch macOS Top Bar (replaces legacy bottom bar)
 pkill -f waybar 2>/dev/null || true
-if [ -f /etc/kiosk/waybar/config.jsonc ]; then
-    waybar -c /etc/kiosk/waybar/config.jsonc -s /etc/kiosk/waybar/style.css &
-elif [ -f /opt/kiosk/waybar/config.jsonc ]; then
-    waybar -c /opt/kiosk/waybar/config.jsonc -s /opt/kiosk/waybar/style.css &
+pkill -f kiosk-macos-topbar.py 2>/dev/null || true
+if [ -f /opt/kiosk/kiosk-macos-topbar.py ]; then
+    python3 /opt/kiosk/kiosk-macos-topbar.py &
 fi
 
 sleep 0.4

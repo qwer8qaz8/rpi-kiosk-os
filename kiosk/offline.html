@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Home Assistant Unavailable – Kiosk</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      background-color: #030712;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #1e293b;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      border-radius: 24px;
+      padding: 44px 48px;
+      max-width: 540px;
+      width: 90vw;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .icon-container {
+      width: 80px;
+      height: 80px;
+      border-radius: 20px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1.5px solid rgba(239, 68, 68, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      position: relative;
+    }
+    .icon-svg {
+      width: 42px;
+      height: 42px;
+      stroke: #f87171;
+      fill: none;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      margin-bottom: 10px;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .meta-box {
+      width: 100%;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      text-align: left;
+      color: #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .meta-label {
+      color: #64748b;
+      margin-right: 12px;
+    }
+    .meta-value {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .btn-retry {
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 28px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .btn-retry:hover {
+      background: #0369a1;
+    }
+    .countdown-text {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 14px;
+    }
+    .brand-footer {
+      position: absolute;
+      bottom: 28px;
+      font-size: 12px;
+      color: #475569;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-container">
+      <svg class="icon-svg" viewBox="0 0 24 24">
+        <line x1="1" y1="1" x2="23" y2="23"></line>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+        <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+        <line x1="12" y1="20" x2="12.01" y2="20"></line>
+      </svg>
+    </div>
+    <h1>Home Assistant Offline</h1>
+    <p>The kiosk display cannot connect to your Home Assistant instance. Reconnection will happen automatically once the network is restored.</p>
+
+    <div class="meta-box">
+      <div class="meta-row">
+        <span class="meta-label">Target URL:</span>
+        <span class="meta-value" id="targetUrlText">Checking...</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Status:</span>
+        <span class="meta-value" style="color: #f87171;">Connection Refused / Unreachable</span>
+      </div>
+    </div>
+
+    <button class="btn-retry" onclick="reconnectNow()">
+      🔄 Reconnect Now
+    </button>
+    <div class="countdown-text">
+      Auto-retry in <span id="countdown">5</span> seconds...
+    </div>
+  </div>
+
+  <div class="brand-footer">
+    HOME ASSISTANT KIOSK  •  8AIR  •  SUPERG TECHNOLOGIES
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const targetUrl = params.get('url') || 'http://homeassistant.local:8123/lovelace/0?kiosk';
+    document.getElementById('targetUrlText').textContent = targetUrl;
+
+    let timeLeft = 5;
+    const countEl = document.getElementById('countdown');
+
+    function reconnectNow() {
+      window.location.replace(targetUrl);
+    }
+
+    // Auto-ping target every second
+    setInterval(() => {
+      timeLeft--;
+      if (timeLeft <= 0) {
+        timeLeft = 5;
+        // Probe connectivity
+        fetch(targetUrl, { mode: 'no-cors', cache: 'no-store' })
+          .then(() => {
+            window.location.replace(targetUrl);
+          })
+          .catch(() => {
+            // Still offline
+          });
+      }
+      if (countEl) countEl.textContent = timeLeft;
+    }, 1000);
+
+    // Prevent navigation / keyboard bypasses
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r')) {
+        reconnectNow();
+        return;
+      }
+      // Block all other shortcut combos (Ctrl+T, Ctrl+N, Ctrl+W, Shift+Esc, etc.)
+      if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+  </script>
+</body>
+</html>
