@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Login — KioskOS</title>
+  <style>
+    :root {
+      --text-main: #f0f6fc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --card-bg: rgba(22, 27, 34, 0.75);
+      --card-border: rgba(255, 255, 255, 0.15);
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 25%, #1e1b4b 0%, #0f172a 60%, #030712 100%);
+      color: var(--text-main);
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .login-container {
+      width: 340px;
+      padding: 36px 30px;
+      background: var(--card-bg);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      animation: modalFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes modalFadeIn {
+      0% { opacity: 0; transform: scale(0.92) translateY(12px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px); }
+      40%, 80% { transform: translateX(8px); }
+    }
+
+    .shake {
+      animation: shake 0.4s ease-in-out;
+    }
+
+    .avatar-badge {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6, #0284c7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      box-shadow: 0 10px 25px rgba(2, 132, 199, 0.4);
+      margin-bottom: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      margin-bottom: 22px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+
+    input[type="password"], input[type="text"] {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      font-size: 15px;
+      padding: 12px 42px 12px 16px;
+      border-radius: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+      letter-spacing: 2px;
+    }
+
+    input::placeholder {
+      letter-spacing: normal;
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      background: rgba(15, 23, 42, 0.95);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    }
+
+    .submit-btn {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #04101e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.2s ease;
+    }
+
+    .submit-btn:hover {
+      background: #7dd3fc;
+      transform: translateY(-50%) scale(1.05);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      font-size: 12px;
+      color: var(--danger);
+      min-height: 18px;
+      margin-top: -6px;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+
+    .footer-links {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 10px;
+    }
+
+    .footer-links a {
+      color: #94a3b8;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container" id="loginCard">
+    <div class="avatar-badge">🔒</div>
+    <div class="title">KioskOS Admin</div>
+    <div class="subtitle">Enter administrator password to continue</div>
+
+    <div class="input-wrapper">
+      <input type="password" id="pinInput" placeholder="Password" autofocus autocomplete="off" />
+      <button class="submit-btn" id="submitBtn" title="Unlock">➔</button>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <div class="footer-links">
+      <span>Protected Web Management</span>
+    </div>
+  </div>
+
+  <script>
+    const pinInput = document.getElementById('pinInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const loginCard = document.getElementById('loginCard');
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const nextUrl = urlParams.get('next') || '/';
+
+    async function handleLogin() {
+      const pin = pinInput.value.trim();
+      if (!pin) {
+        showError('Please enter the admin password');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = '...';
+      errorMsg.textContent = '';
+
+      try {
+        const res = await fetch('/api/admin/verify_pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: pin })
+        });
+        const data = await res.json();
+
+        if (data.authenticated || data.success) {
+          submitBtn.textContent = '✓';
+          submitBtn.style.background = '#10b981';
+          submitBtn.style.color = '#fff';
+          loginCard.style.opacity = '0.5';
+          window.location.href = nextUrl;
+        } else {
+          showError(data.error || 'Incorrect password');
+        }
+      } catch (err) {
+        showError('Connection error communicating with server');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '➔';
+      }
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      loginCard.classList.remove('shake');
+      void loginCard.offsetWidth; // Trigger reflow
+      loginCard.classList.add('shake');
+      pinInput.value = '';
+      pinInput.focus();
+    }
+
+    submitBtn.addEventListener('click', handleLogin);
+    pinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        handleLogin();
+      }
+    });
+  </script>
+</body>
+</html>

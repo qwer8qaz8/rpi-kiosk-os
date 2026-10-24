@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KioskOS — The Modern Linux Smart Display & Admin Workstation</title>
+  <meta name="description" content="Universal Linux Kiosk Operating System with macOS-style Admin Workstation, deep Home Assistant integration, camera motion sensor, and enterprise security.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    :root {
+      --bg: #030712;
+      --card-bg: rgba(17, 24, 39, 0.75);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.35);
+      --accent-purple: #818cf8;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.12);
+      --warning-border: rgba(245, 158, 11, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      line-height: 1.6;
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 60%, rgba(129, 140, 248, 0.1) 0%, transparent 40%);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Navigation */
+    header.navbar {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      position: sticky;
+      top: 0;
+      background: rgba(3, 7, 18, 0.85);
+      backdrop-filter: blur(20px);
+      z-index: 1000;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover {
+      color: #fff;
+    }
+
+    .btn-github {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-github:hover {
+      background: rgba(255, 255, 255, 0.16);
+      transform: translateY(-1px);
+    }
+
+    /* Beta Warning Banner */
+    .beta-banner {
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-top: 32px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      color: #fef3c7;
+    }
+    .beta-banner strong {
+      color: var(--warning);
+      display: block;
+      margin-bottom: 2px;
+      font-size: 14px;
+    }
+    .beta-banner p {
+      font-size: 13px;
+      color: #fde68a;
+      line-height: 1.5;
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 60px 0 80px 0;
+      text-align: center;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: 52px;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p.lead {
+      font-size: 19px;
+      color: var(--text-muted);
+      max-width: 760px;
+      margin: 0 auto 36px auto;
+      line-height: 1.6;
+    }
+
+    .hero-actions {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 48px;
+      flex-wrap: wrap;
+    }
+
+    .btn-cta {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 14px 28px;
+      border-radius: 12px;
+      text-decoration: none;
+      box-shadow: 0 10px 30px var(--accent-glow);
+      transition: all 0.2s;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .btn-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 35px rgba(2, 132, 199, 0.5);
+    }
+
+    /* Terminal Preview Box */
+    .terminal-box {
+      max-width: 680px;
+      margin: 0 auto;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .terminal-header {
+      background: rgba(30, 41, 59, 0.8);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .term-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .term-dot.red { background: #ef4444; }
+    .term-dot.yellow { background: #f59e0b; }
+    .term-dot.green { background: #10b981; }
+
+    .terminal-body {
+      padding: 20px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 14px;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      overflow-x: auto;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: #cbd5e1;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+
+    /* Features Grid */
+    .section-title {
+      text-align: center;
+      margin: 80px 0 40px 0;
+    }
+    .section-title h2 {
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: -0.8px;
+      margin-bottom: 12px;
+    }
+    .section-title p {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 60px;
+    }
+
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 30px;
+      backdrop-filter: blur(20px);
+      transition: all 0.2s;
+    }
+    .feature-card:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+      transform: translateY(-4px);
+    }
+
+    .card-icon {
+      font-size: 36px;
+      margin-bottom: 16px;
+      display: inline-block;
+    }
+
+    .feature-card h3 {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #fff;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Shortcuts Table */
+    .table-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 24px;
+      margin-bottom: 60px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 14px;
+    }
+    th {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-weight: 600;
+    }
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+    }
+    kbd {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #38bdf8;
+      font-weight: 600;
+      font-family: inherit;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 40px 0;
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+    }
+    footer a {
+      color: #94a3b8;
+      text-decoration: none;
+    }
+    footer a:hover {
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="container" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+      <a href="#" class="nav-brand">
+        <div class="brand-icon">⚡</div>
+        <span>KioskOS</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#shortcuts">Shortcuts</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/qwer8qaz8/rpi-kiosk-os" target="_blank" class="btn-github">
+          <span>GitHub</span> ↗
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Active Beta Notice -->
+    <div class="beta-banner">
+      <div style="font-size:24px;">⚠️</div>
+      <div>
+        <strong>ACTIVE BETA DEVELOPMENT (UNSTABLE)</strong>
+        <p>KioskOS is currently in early beta. Architecture and APIs are evolving rapidly and may be subject to bugs or breaking updates. Intended for development, hobbyists, and early adopters testing dedicated kiosk displays.</p>
+      </div>
+    </div>
+
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="badge-pill">
+        <span>🚀 Version 1.2.0-beta</span> &bull; <span>Universal Linux</span> &bull; <span>Home Assistant</span>
+      </div>
+      <h1>The Modern Linux Smart Display & Admin Workstation</h1>
+      <p class="lead">
+        Turn any Raspberry Pi, Intel/AMD mini-PC, or Linux machine into a resilient, touch-optimized kiosk display. Featuring a macOS-inspired windowed Admin Desktop, camera motion sensor, automated night mode, and enterprise security.
+      </p>
+
+      <div class="hero-actions">
+        <a href="#install" class="btn-cta">Install Now with 1 Command</a>
+        <a href="https://github.com/qwer8qaz8/rpi-kiosk-os" target="_blank" class="btn-github" style="padding:14px 24px; font-size:15px; border-radius:12px;">
+          View Repository on GitHub
+        </a>
+      </div>
+
+      <!-- Quick Install Box -->
+      <div class="terminal-box" id="install">
+        <div class="terminal-header">
+          <div class="term-dot red"></div>
+          <div class="term-dot yellow"></div>
+          <div class="term-dot green"></div>
+          <span style="font-size:11px; color:#94a3b8; margin-left:8px;">bash — install.sh</span>
+        </div>
+        <div class="terminal-body">
+          <code id="installCmd">curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | bash</code>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('installCmd').textContent); this.textContent='✓ Copied!'; setTimeout(()=>this.textContent='Copy', 2000);">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features">
+      <div class="section-title">
+        <h2>Built for Stability, Security & Everyday Control</h2>
+        <p>A dual-mode architecture that keeps your dashboard fast while giving you full administrative power.</p>
+      </div>
+
+      <div class="grid-3">
+        <!-- Feature 1 -->
+        <div class="feature-card">
+          <div class="card-icon">🖥️</div>
+          <h3>macOS Admin Desktop</h3>
+          <p>Switch smoothly into a desktop mode with a floating dock, real app icons, live menu bar, and windowed apps (Google Chrome, Preferences, Terminal Logs, and Camera Sensor) without stopping your display compositor.</p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="feature-card">
+          <div class="card-icon">🔐</div>
+          <h3>Secret Sequence Unlock</h3>
+          <p>High-security access barrier: press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>=</kbd>, type <kbd>Kiosk</kbd> while listening in the corner, and unlock with your administrator password. Press <kbd>Esc</kbd> anytime to cancel.</p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="feature-card">
+          <div class="card-icon">📷</div>
+          <h3>Camera Motion Detection</h3>
+          <p>Turns connected USB webcams or CSI cameras into a room motion detector. Automatically publishes <code>binary_sensor.kiosk_motion</code> events to Home Assistant and wakes the display when you enter the room.</p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="feature-card">
+          <div class="card-icon">🌙</div>
+          <h3>Automated Night Mode</h3>
+          <p>Schedule display sleep during nighttime hours to eliminate room glare and save power. The screen stays completely dark and wakes automatically in the morning or upon room motion.</p>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="feature-card">
+          <div class="card-icon">🏠</div>
+          <h3>Home Assistant MQTT Ready</h3>
+          <p>Full MQTT auto-discovery for 10+ smart entities: Screen Power, Display Brightness slider, CPU Temperature, RAM usage, Night Mode switch, and Camera snapshots.</p>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="feature-card">
+          <div class="card-icon">🐧</div>
+          <h3>Universal Linux Architecture</h3>
+          <p>Not limited to Raspberry Pi. Runs on any x86_64 or ARM64 Linux system (Debian, Ubuntu, Fedora) using modern Wayland (Cage) or X11 display stacks.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Shortcuts Table -->
+    <section id="shortcuts">
+      <div class="section-title">
+        <h2>Keyboard Shortcuts & Controls</h2>
+        <p>Quick access shortcuts configured right out of the box.</p>
+      </div>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Action</th>
+              <th>Shortcut / Sequence</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Enter Admin Mode</strong></td>
+              <td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>=</kbd> &rarr; type <kbd>Kiosk</kbd> &rarr; enter Password</td>
+              <td>Activates corner listening badge, prompts for password, and opens the macOS Admin Desktop.</td>
+            </tr>
+            <tr>
+              <td><strong>Exit Admin Mode</strong></td>
+              <td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>=</kbd> or click <kbd>🔒 Lock</kbd></td>
+              <td>Instantly closes admin mode and locks display back to single-window fullscreen kiosk.</td>
+            </tr>
+            <tr>
+              <td><strong>Cancel Listening</strong></td>
+              <td><kbd>Escape</kbd></td>
+              <td>Dismisses the corner listening indicator and cancels the secret sequence.</td>
+            </tr>
+            <tr>
+              <td><strong>Toggle Screen Power</strong></td>
+              <td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd></td>
+              <td>Manually toggles screen power on or off without killing active applications.</td>
+            </tr>
+            <tr>
+              <td><strong>System Reboot</strong></td>
+              <td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd></td>
+              <td>Prompts and safely reboots the operating system.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>KioskOS is an open-source project released under the MIT License.</p>
+      <p style="margin-top:6px;">
+        <a href="https://github.com/qwer8qaz8/rpi-kiosk-os">GitHub Repository</a> &bull; 
+        <a href="https://github.com/qwer8qaz8/rpi-kiosk-os/blob/main/LICENSE">License</a> &bull; 
+        <a href="https://github.com/qwer8qaz8/rpi-kiosk-os/issues">Report Issue</a>
+      </p>
+    </div>
+  </footer>
+
+</body>
+</html>

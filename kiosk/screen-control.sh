@@ -119,6 +119,11 @@ set_brightness() {
     fi
   fi
 
+  # 2b. brightnessctl for standard Linux systems
+  if command -v brightnessctl >/dev/null 2>&1; then
+    brightnessctl set "${percent}%" >/dev/null 2>&1 || true
+  fi
+
   # 3. Hardware DDC/CI for HDMI monitors (if available)
   if command -v ddcutil >/dev/null 2>&1; then
     ddcutil setvcp 10 "$percent" >/dev/null 2>&1 &
@@ -160,19 +165,15 @@ get_brightness() {
 
 set_screen_power() {
   local state="$1" # "on" or "off"
-  local outputs
-  outputs=$(get_all_outputs)
 
   if [ "$state" = "on" ]; then
-    # 1. Backlight on
-    set_backlight_power 0
-
-    # 2. wlr-randr power on with --auto to restore layout and resolution
-    if command -v wlr-randr >/dev/null 2>&1; then
-      for out in $outputs; do
-        run_wayland_cmd wlr-randr --output "$out" --on --auto
-      done
+    # 1. Raspberry Pi HDMI display power ON via VideoCore
+    if command -v vcgencmd >/dev/null 2>&1; then
+      vcgencmd display_power 1 2>/dev/null || true
     fi
+
+    # 2. Backlight on (DSI touchscreens)
+    set_backlight_power 0
 
     # 3. Framebuffer unblank
     for fb in /sys/class/graphics/fb*; do
@@ -186,9 +187,9 @@ set_screen_power() {
       ddcutil setvcp d6 1 >/dev/null 2>&1 &
     fi
 
-    # 5. vcgencmd if supported
-    if command -v vcgencmd >/dev/null 2>&1; then
-      vcgencmd display_power 1 2>/dev/null || true
+    # 5. Generic Linux console unblank
+    if command -v setterm >/dev/null 2>&1; then
+      setterm --blank poke 2>/dev/null || true
     fi
 
     # 6. Restore brightness
@@ -211,15 +212,14 @@ except Exception:
     echo "Screen powered ON"
 
   elif [ "$state" = "off" ]; then
-    # 1. Backlight off
-    set_backlight_power 1
-
-    # 2. wlr-randr power off
-    if command -v wlr-randr >/dev/null 2>&1; then
-      for out in $outputs; do
-        run_wayland_cmd wlr-randr --output "$out" --off
-      done
+    # 1. Raspberry Pi HDMI display power OFF via VideoCore
+    # Note: We do NOT use wlr-randr --off because disabling all outputs causes Cage compositor to exit!
+    if command -v vcgencmd >/dev/null 2>&1; then
+      vcgencmd display_power 0 2>/dev/null || true
     fi
+
+    # 2. Backlight off (DSI touchscreens)
+    set_backlight_power 1
 
     # 3. Framebuffer blank
     for fb in /sys/class/graphics/fb*; do
@@ -233,9 +233,9 @@ except Exception:
       ddcutil setvcp d6 5 >/dev/null 2>&1 &
     fi
 
-    # 5. vcgencmd if supported
-    if command -v vcgencmd >/dev/null 2>&1; then
-      vcgencmd display_power 0 2>/dev/null || true
+    # 5. Generic Linux console blank
+    if command -v setterm >/dev/null 2>&1; then
+      setterm --blank force 2>/dev/null || true
     fi
 
     if [ -f "$CONFIG_FILE" ]; then
@@ -297,14 +297,29 @@ except Exception:
 
 get_status() {
   local screen_state="ON"
+
+  # Check vcgencmd first on Raspberry Pi
+  if command -v vcgencmd >/dev/null 2>&1; then
+    local vcg
+    vcg=$(vcgencmd display_power 2>/dev/null || true)
+    if [[ "$vcg" =~ display_power=0 ]]; then
+      echo "OFF"
+      return
+    fi
+  fi
+
+  # Check backlight power on DSI touchscreens
   for bl in /sys/class/backlight/*; do
     if [ -f "$bl/bl_power" ]; then
       val=$(cat "$bl/bl_power" 2>/dev/null)
       if [ "$val" = "1" ]; then
-        screen_state="OFF"
+        echo "OFF"
+        return
       fi
     fi
   done
+
+  # Fallback to config file
   if [ -f "$CONFIG_FILE" ]; then
     configured=$(python3 -c "import json; print('ON' if json.load(open('$CONFIG_FILE')).get('screen_on', True) else 'OFF')" 2>/dev/null)
     if [ -n "$configured" ]; then

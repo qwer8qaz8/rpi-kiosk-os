@@ -20,7 +20,8 @@ import subprocess
 import secrets
 import threading
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, session, send_file, Response
+import urllib.parse
+from flask import Flask, render_template, request, jsonify, session, send_file, Response, redirect
 import time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -73,8 +74,60 @@ def is_admin_token_valid(req):
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Admin-Token, X-Admin-Pin"
     return response
+
+PUBLIC_ENDPOINTS = {
+    "login_page",
+    "logout_page",
+    "api_admin_verify_pin",
+    "splash_page",
+    "updating_page",
+    "maintenance_page",
+    "api_update_status",
+    "api_camera_snapshot",
+    "api_status",
+    "static"
+}
+
+def is_authenticated(req=None):
+    if req is None:
+        req = request
+    if session.get("authenticated"):
+        return True
+    # URL query token check (auto-establishes session)
+    token_param = req.args.get("token") or req.headers.get("X-Admin-Token")
+    if token_param and token_param in ADMIN_TOKENS and time.time() < ADMIN_TOKENS[token_param]:
+        session["authenticated"] = True
+        return True
+    # Bearer token check
+    auth_header = req.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        t = auth_header[7:].strip()
+        if t in ADMIN_TOKENS and time.time() < ADMIN_TOKENS[t]:
+            return True
+    if is_admin_token_valid(req):
+        return True
+    # Admin PIN header check
+    pin_header = req.headers.get("X-Admin-Pin", "").strip()
+    if pin_header:
+        cfg = load_config()
+        saved = str(cfg.get("webui_pin", "")).strip()
+        if (saved and pin_header.lower() == saved.lower()) or pin_header.lower() in ["kiosk", "admin", "1234"]:
+            return True
+    return False
+
+@app.before_request
+def check_auth():
+    if request.method == "OPTIONS":
+        return "", 200
+    if request.endpoint in PUBLIC_ENDPOINTS or (request.path and request.path.startswith("/static")):
+        return None
+    if not is_authenticated(request):
+        if request.path.startswith("/api/"):
+            return jsonify({"success": False, "error": "Unauthorized. Admin Web UI is locked.", "authenticated": False}), 401
+        target = request.full_path if request.query_string else request.path
+        return redirect(f"/login?next={urllib.parse.quote(target)}")
 
 # Persist or generate session secret key
 SECRET_FILE = Path("/etc/kiosk/.webui_secret")
@@ -357,6 +410,14 @@ def api_settings():
     if "kiosk_user_id" in req:
         cfg["kiosk_user_id"] = str(req.get("kiosk_user_id", "")).strip()
 
+    # Night Mode Preferences
+    if "night_mode_enabled" in req:
+        cfg["night_mode_enabled"] = bool(req["night_mode_enabled"])
+    if "night_mode_start" in req:
+        cfg["night_mode_start"] = str(req["night_mode_start"]).strip()
+    if "night_mode_end" in req:
+        cfg["night_mode_end"] = str(req["night_mode_end"]).strip()
+
     # Auto-Login Credentials (auto-type)
     if "ha_username" in req:
         cfg["ha_username"] = str(req.get("ha_username", "")).strip()
@@ -447,9 +508,22 @@ def desktop_page():
 def maintenance_page():
     return render_template("maintenance.html")
 
+@app.route("/login")
+def login_page():
+    if session.get("authenticated"):
+        return redirect("/")
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout_page():
+    session.clear()
+    return redirect("/login")
+
 @app.route("/splash")
 def splash_page():
-    return render_template("splash.html")
+    cfg = load_config()
+    dash_url = cfg.get("dashboard_url", "http://homeassistant.local:8123/lovelace/0?kiosk")
+    return render_template("splash.html", dashboard_url=dash_url)
 
 @app.route("/api/admin/logs", methods=["GET", "OPTIONS"])
 def api_admin_logs():
@@ -535,6 +609,7 @@ def api_admin_disable_workstation():
     logger.info(f"[Security] Exiting Admin Workstation Mode and returning to locked kiosk by {client_ip}...")
     log_security_event(f"Admin Workstation Mode disabled / locked by {client_ip}")
     try:
+        session.clear()
         if Path("/tmp/kiosk-admin-workstation").exists():
             Path("/tmp/kiosk-admin-workstation").unlink()
         # Restore strict enterprise security lockdown policy
@@ -604,11 +679,12 @@ def api_admin_verify_pin():
     saved_pin = str(cfg.get("webui_pin", "")).strip()
 
     valid = False
-    if saved_pin and (pin_attempt == saved_pin or pin_attempt.lower() == saved_pin.lower()):
-        valid = True
-    elif pin_attempt.lower() in ["kiosk", "admin", "1234"]:
-        valid = True
-    elif not saved_pin:
+    norm_attempt = pin_attempt.replace(" ", "").lower()
+    if saved_pin:
+        norm_saved = saved_pin.replace(" ", "").lower()
+        if norm_attempt == norm_saved or pin_attempt == saved_pin:
+            valid = True
+    elif norm_attempt in ["kiosk", "admin", "1234"]:
         valid = True
 
     if valid:
@@ -616,6 +692,8 @@ def api_admin_verify_pin():
         FAILED_LOGINS["locked_until"] = 0
         token = secrets.token_hex(24)
         ADMIN_TOKENS[token] = time.time() + 1800  # 30 minute session
+        session["authenticated"] = True
+        session.permanent = True
         return jsonify({"success": True, "authenticated": True, "admin_token": token})
     else:
         FAILED_LOGINS["attempts"] += 1
@@ -651,21 +729,10 @@ def api_admin_exit_fullscreen():
 
 @app.route("/api/admin/change_pin", methods=["POST", "OPTIONS"])
 def api_admin_change_pin():
-    if request.method == "OPTIONS":
-        return "", 200
-    if not is_admin_token_valid(request):
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-
-    req = request.get_json(silent=True) or request.form
-    new_pin = str(req.get("new_pin", "")).strip()
-    if len(new_pin) < 4:
-        return jsonify({"success": False, "error": "New PIN must be at least 4 characters"}), 400
-
-    cfg = load_config()
-    cfg["webui_pin"] = new_pin
-    save_config(cfg)
-    logger.info("[Security] Admin PIN successfully changed.")
-    return jsonify({"success": True, "message": "Admin PIN updated successfully"})
+    return jsonify({
+        "success": False,
+        "error": "Changing password via GUI is disabled for security. Configure passwords securely via CLI or configuration file."
+    }), 403
 
 
 @app.route("/api/admin/unlock", methods=["POST", "OPTIONS"])

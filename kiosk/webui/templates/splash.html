@@ -12,7 +12,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
     }
     body {
-      background: #060911;
+      background: radial-gradient(circle at 50% 40%, #0f172a 0%, #060911 100%);
       color: #f8fafc;
       min-height: 100vh;
       display: flex;
@@ -21,53 +21,62 @@
       justify-content: center;
       user-select: none;
       overflow: hidden;
+      transition: opacity 0.6s ease;
     }
     .logo-container {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 18px;
-      animation: fadeIn 1.2s ease-out;
+      gap: 16px;
+      animation: fadeIn 1s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .logo-badge {
-      width: 76px;
-      height: 76px;
-      border-radius: 20px;
-      background: linear-gradient(135deg, #1e3a8a, #0284c7);
+      width: 84px;
+      height: 84px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #2563eb, #0284c7);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 38px;
-      box-shadow: 0 10px 30px rgba(2, 132, 199, 0.4);
+      font-size: 42px;
+      box-shadow: 0 12px 35px rgba(2, 132, 199, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
     h1 {
-      font-size: 26px;
+      font-size: 28px;
       font-weight: 700;
       letter-spacing: -0.5px;
       color: #f8fafc;
+      margin-top: 4px;
     }
-    .spinner-ring {
-      margin-top: 18px;
-      width: 32px;
-      height: 32px;
-      border: 3px solid rgba(255, 255, 255, 0.1);
-      border-top: 3px solid #38bdf8;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
+    .progress-box {
+      width: 220px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      margin-top: 20px;
+      overflow: hidden;
+      position: relative;
     }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    @keyframes fadeIn {
-      0% { opacity: 0; transform: scale(0.95); }
-      100% { opacity: 1; transform: scale(1); }
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      border-radius: 4px;
+      transition: width 0.4s ease;
     }
     .tagline {
       margin-top: 14px;
       font-size: 13px;
-      color: #64748b;
-      letter-spacing: 0.5px;
+      font-weight: 500;
+      color: #94a3b8;
+      letter-spacing: 0.3px;
+      min-height: 20px;
+      text-align: center;
+    }
+    @keyframes fadeIn {
+      0% { opacity: 0; transform: scale(0.92) translateY(10px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
     }
   </style>
 </head>
@@ -75,8 +84,53 @@
   <div class="logo-container">
     <div class="logo-badge">⚡</div>
     <h1>KioskOS</h1>
-    <div class="spinner-ring"></div>
-    <div class="tagline">Starting system display...</div>
+    <div class="progress-box">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="tagline" id="tagline">Starting system display...</div>
   </div>
+
+  <script>
+    const startTime = Date.now();
+    const minDisplayTimeMs = 2800; // Keep splash visible for at least 2.8s
+    const progressBar = document.getElementById('progressBar');
+    const tagline = document.getElementById('tagline');
+
+    let targetUrl = '{{ dashboard_url or "http://homeassistant.local:8123/lovelace/0?kiosk" }}';
+    progressBar.style.width = '30%';
+
+    // Query status to verify system is up
+    async function verifyStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        if (data && data.config && data.config.dashboard_url) {
+          targetUrl = data.config.dashboard_url;
+        }
+      } catch (e) {
+        // Use default
+      }
+    }
+
+    verifyStatus();
+
+    setTimeout(() => {
+      progressBar.style.width = '65%';
+      tagline.textContent = 'Verifying network & services...';
+    }, 1000);
+
+    setTimeout(() => {
+      progressBar.style.width = '100%';
+      tagline.textContent = 'Launching dashboard...';
+    }, 2000);
+
+    setTimeout(() => {
+      // Smooth fade transition
+      document.body.style.opacity = '0';
+      setTimeout(() => {
+        window.location.replace(targetUrl);
+      }, 500);
+    }, minDisplayTimeMs);
+  </script>
 </body>
 </html>

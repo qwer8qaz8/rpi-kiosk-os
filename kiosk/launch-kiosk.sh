@@ -384,13 +384,20 @@ function openPasswordModal() {
             if (data.authenticated || data.success) {
                 submitBtn.textContent = '✓ Unlocking...';
                 submitBtn.style.background = '#10b981';
-                fetch('http://127.0.0.1:8080/api/admin/enable_workstation', { method: 'POST' })
-                    .then(() => {
-                        window.location.href = 'http://127.0.0.1:8080/desktop';
-                    })
-                    .catch(() => {
-                        window.location.href = 'http://127.0.0.1:8080/desktop';
-                    });
+                const token = data.admin_token || '';
+                fetch('http://127.0.0.1:8080/api/admin/enable_workstation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    }
+                })
+                .then(() => {
+                    window.location.href = 'http://127.0.0.1:8080/desktop?token=' + token;
+                })
+                .catch(() => {
+                    window.location.href = 'http://127.0.0.1:8080/desktop?token=' + token;
+                });
             } else {
                 submitBtn.textContent = 'Unlock (Enter)';
                 submitBtn.disabled = false;
@@ -417,14 +424,58 @@ function openPasswordModal() {
     setTimeout(() => input.focus(), 60);
 }
 
-// 1. Advanced Keyboard Shortcuts & Lockdown Handler
+// 1. Advanced Keyboard Shortcuts & Secret Sequence Handler
 window.addEventListener('keydown', function(e) {
-    // A) Admin Unlock Shortcut: Ctrl + Alt + = (or + or A or K)
-    if (e.ctrlKey && e.altKey && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.code === 'NumpadEqual' || e.code === 'NumpadAdd' || e.keyCode === 187 || e.keyCode === 61 || e.keyCode === 107 || e.key === 'a' || e.key === 'A' || e.key === 'k' || e.key === 'K')) {
+    // If user presses Escape while listening in corner: cancel listening mode
+    if (secretListenMode && e.key === 'Escape') {
+        e.preventDefault();
+        hideCornerIndicator();
+        return false;
+    }
+
+    // A) Admin Unlock Shortcut: ONLY Ctrl + Alt + = (or +)
+    const isShortcut = e.ctrlKey && e.altKey && !e.shiftKey && (
+        e.key === '=' || e.key === '+' ||
+        e.code === 'Equal' || e.code === 'NumpadEqual' || e.code === 'NumpadAdd' ||
+        e.keyCode === 187 || e.keyCode === 61 || e.keyCode === 107
+    );
+
+    if (isShortcut) {
         e.preventDefault();
         e.stopPropagation();
-        openPasswordModal();
+
+        // If in Admin Desktop mode, exiting desktop mode:
+        if (window.location.pathname.includes('/desktop') || window.__kiosk_workstation_active) {
+            lockKioskNow();
+            return false;
+        }
+
+        // Toggle Secret Listen Mode:
+        if (secretListenMode) {
+            hideCornerIndicator();
+        } else {
+            secretListenMode = true;
+            secretBuffer = '';
+            showCornerIndicator('listening');
+            if (secretListenTimer) clearTimeout(secretListenTimer);
+            secretListenTimer = setTimeout(() => {
+                hideCornerIndicator();
+            }, 10000);
+        }
         return false;
+    }
+
+    // When Secret Listen Mode is active: record typed characters
+    if (secretListenMode && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (e.key && e.key.length === 1) {
+            secretBuffer += e.key;
+            // When user types 'Kiosk' with uppercase K
+            if (secretBuffer.endsWith('Kiosk')) {
+                hideCornerIndicator();
+                openPasswordModal();
+                return false;
+            }
+        }
     }
 
     // B) EMERGENCY PANIC LOCK: Ctrl+Alt+Shift+L or Ctrl+Alt+Shift+Q
@@ -1361,10 +1412,18 @@ else
         sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
     fi
 
-    # Launch Chromium locked in Standalone Application mode (--app disables tab strips and Ctrl+T shortcuts)
+    # Ensure WebUI server is answering before launching splash
+    for attempt in {1..30}; do
+        if curl -s -m 1 http://127.0.0.1:8080/splash >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.2
+    done
+
+    # Launch Chromium with custom boot splash screen in Standalone Application mode
     exec "$CHROMIUM_BIN" \
       "${EXTRA_CHROME_FLAGS[@]}" \
-      --app="$DASHBOARD_URL" \
+      --app="http://127.0.0.1:8080/splash" \
       --start-fullscreen \
       --noerrdialogs \
       --disable-infobars \
