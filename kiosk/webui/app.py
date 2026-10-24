@@ -190,14 +190,6 @@ def load_config():
         return {}
 
 
-def is_authenticated():
-    cfg = load_config()
-    pin = str(cfg.get("webui_pin", "")).strip()
-    if not pin:
-        return True
-    return session.get("authenticated", False) is True
-
-
 def save_config(data):
     path = CONFIG_PATH if CONFIG_PATH.parent.exists() else FALLBACK_CONFIG_PATH
     try:
