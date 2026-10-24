@@ -35,6 +35,11 @@ CONFIG_PATH = Path("/etc/kiosk/config.json")
 FALLBACK_CONFIG_PATH = Path("/opt/kiosk/config.json")
 SCREEN_CONTROL_SCRIPT = Path("/opt/kiosk/screen-control.sh")
 
+# Motion detection & Night mode state
+LAST_FRAME_SAMPLE = None
+MOTION_UNTIL = 0
+NIGHT_SCREEN_OFF = False
+
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
@@ -475,63 +480,59 @@ class KioskMQTTDaemon:
         except Exception:
             pass
 
-LAST_FRAME_SAMPLE = None
-MOTION_UNTIL = 0
-NIGHT_SCREEN_OFF = False
+    def check_motion_and_nightmode(self):
+        global LAST_FRAME_SAMPLE, MOTION_UNTIL, NIGHT_SCREEN_OFF
+        cfg = load_config()
 
-def check_motion_and_nightmode(client, base_topic):
-    global LAST_FRAME_SAMPLE, MOTION_UNTIL, NIGHT_SCREEN_OFF
-    cfg = load_config()
+        # 1. Camera Motion Detection
+        try:
+            import urllib.request
+            req = urllib.request.Request("http://127.0.0.1:8080/api/camera/snapshot", headers={"User-Agent": "kiosk-mqtt"})
+            raw_img = urllib.request.urlopen(req, timeout=1.5).read()
+            if raw_img and len(raw_img) > 1000:
+                step = max(1, len(raw_img) // 200)
+                sample = raw_img[100:len(raw_img)-100:step]
+                if LAST_FRAME_SAMPLE and len(LAST_FRAME_SAMPLE) == len(sample):
+                    diffs = sum(1 for a, b in zip(LAST_FRAME_SAMPLE, sample) if abs(a - b) > 25)
+                    if diffs > (len(sample) * 0.12):
+                        now = time.time()
+                        if now > MOTION_UNTIL:
+                            self.client.publish(f"{self.base_topic}/motion/state", "ON", qos=1, retain=True)
+                        MOTION_UNTIL = now + 15
+                        if NIGHT_SCREEN_OFF:
+                            run_screen_cmd("on")
+                            NIGHT_SCREEN_OFF = False
+                            self.client.publish(f"{self.base_topic}/screen/state", "ON", qos=1, retain=True)
+                LAST_FRAME_SAMPLE = sample
+        except Exception:
+            pass
 
-    # 1. Camera Motion Detection
-    try:
-        import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:8080/api/camera/snapshot", headers={"User-Agent": "kiosk-mqtt"})
-        raw_img = urllib.request.urlopen(req, timeout=1.5).read()
-        if raw_img and len(raw_img) > 1000:
-            step = max(1, len(raw_img) // 200)
-            sample = raw_img[100:len(raw_img)-100:step]
-            if LAST_FRAME_SAMPLE and len(LAST_FRAME_SAMPLE) == len(sample):
-                diffs = sum(1 for a, b in zip(LAST_FRAME_SAMPLE, sample) if abs(a - b) > 25)
-                if diffs > (len(sample) * 0.12):
-                    now = time.time()
-                    if now > MOTION_UNTIL:
-                        client.publish(f"{base_topic}/motion/state", "ON", qos=1, retain=True)
-                    MOTION_UNTIL = now + 15
-                    if NIGHT_SCREEN_OFF:
-                        run_screen_cmd("on")
-                        NIGHT_SCREEN_OFF = False
-                        client.publish(f"{base_topic}/screen/state", "ON", qos=1, retain=True)
-            LAST_FRAME_SAMPLE = sample
-    except Exception:
-        pass
+        if MOTION_UNTIL > 0 and time.time() > MOTION_UNTIL:
+            self.client.publish(f"{self.base_topic}/motion/state", "OFF", qos=1, retain=True)
+            MOTION_UNTIL = 0
 
-    if MOTION_UNTIL > 0 and time.time() > MOTION_UNTIL:
-        client.publish(f"{base_topic}/motion/state", "OFF", qos=1, retain=True)
-        MOTION_UNTIL = 0
+        # 2. Automated Night Mode Scheduler
+        night_en = cfg.get("night_mode_enabled", False)
+        if night_en:
+            now_hm = time.strftime("%H:%M")
+            start = cfg.get("night_mode_start", "23:00")
+            end = cfg.get("night_mode_end", "07:00")
+            is_night = False
+            if start <= end:
+                is_night = (start <= now_hm < end)
+            else:
+                is_night = (now_hm >= start or now_hm < end)
 
-    # 2. Automated Night Mode Scheduler
-    night_en = cfg.get("night_mode_enabled", False)
-    if night_en:
-        now_hm = time.strftime("%H:%M")
-        start = cfg.get("night_mode_start", "23:00")
-        end = cfg.get("night_mode_end", "07:00")
-        is_night = False
-        if start <= end:
-            is_night = (start <= now_hm < end)
-        else:
-            is_night = (now_hm >= start or now_hm < end)
-
-        if is_night and time.time() > MOTION_UNTIL:
-            current_st = get_screen_state()
-            if current_st == "ON":
-                run_screen_cmd("off")
-                NIGHT_SCREEN_OFF = True
-                client.publish(f"{base_topic}/screen/state", "OFF", qos=1, retain=True)
-        elif not is_night and NIGHT_SCREEN_OFF:
-            run_screen_cmd("on")
-            NIGHT_SCREEN_OFF = False
-            client.publish(f"{base_topic}/screen/state", "ON", qos=1, retain=True)
+            if is_night and time.time() > MOTION_UNTIL:
+                current_st = get_screen_state()
+                if current_st == "ON":
+                    run_screen_cmd("off")
+                    NIGHT_SCREEN_OFF = True
+                    self.client.publish(f"{self.base_topic}/screen/state", "OFF", qos=1, retain=True)
+            elif not is_night and NIGHT_SCREEN_OFF:
+                run_screen_cmd("on")
+                NIGHT_SCREEN_OFF = False
+                self.client.publish(f"{self.base_topic}/screen/state", "ON", qos=1, retain=True)
 
     def run(self):
         while not self.stop_event.is_set():
@@ -559,7 +560,7 @@ def check_motion_and_nightmode(client, base_topic):
                         logger.info("MQTT configuration updated. Reconnecting...")
                         break
 
-                    check_motion_and_nightmode(self.client, self.base_topic)
+                    self.check_motion_and_nightmode()
                     tick_count += 1
                     if tick_count >= 15:  # every 30s
                         self.publish_states()
