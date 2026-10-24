@@ -18,6 +18,20 @@
       <action name="None" />
     </keybind>
 
+    <!-- Block Virtual Terminal / Console Switching (Ctrl+Alt+F1 through F12) -->
+    <keybind key="C-A-F1"><action name="None" /></keybind>
+    <keybind key="C-A-F2"><action name="None" /></keybind>
+    <keybind key="C-A-F3"><action name="None" /></keybind>
+    <keybind key="C-A-F4"><action name="None" /></keybind>
+    <keybind key="C-A-F5"><action name="None" /></keybind>
+    <keybind key="C-A-F6"><action name="None" /></keybind>
+    <keybind key="C-A-F7"><action name="None" /></keybind>
+    <keybind key="C-A-F8"><action name="None" /></keybind>
+    <keybind key="C-A-F9"><action name="None" /></keybind>
+    <keybind key="C-A-F10"><action name="None" /></keybind>
+    <keybind key="C-A-F11"><action name="None" /></keybind>
+    <keybind key="C-A-F12"><action name="None" /></keybind>
+
     <!-- Restart Kiosk Keybind: Ctrl+Alt+R -->
     <keybind key="C-A-r">
       <action name="Execute" command="/usr/bin/sudo /bin/systemctl restart kiosk-display" />

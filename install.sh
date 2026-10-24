@@ -440,8 +440,63 @@ if [ -n "$CONFIG_TXT" ]; then
   fi
 fi
 
-# Mask terminal getty on tty1 so no login text or prompt is ever displayed
-systemctl mask getty@tty1.service 2>/dev/null || true
+# Mask terminal getty on all TTYs so no login prompt or shell can ever be opened via Ctrl+Alt+F1..F6
+systemctl mask getty@tty1.service getty@tty2.service getty@tty3.service getty@tty4.service getty@tty5.service getty@tty6.service autovt@.service 2>/dev/null || true
+
+# Configure logind to disable auto-allocation of virtual terminals
+mkdir -p /etc/systemd/logind.conf.d
+cat <<EOF_LOGIND > /etc/systemd/logind.conf.d/disable-vts.conf
+[Login]
+NAutoVTs=0
+ReserveVT=0
+EOF_LOGIND
+
+# Remap kernel console keys to disable VT switching
+mkdir -p /etc/console-setup
+cat <<EOF_KMAP > /etc/console-setup/disable-vts.kmap
+control alt keycode 59 = VoidSymbol
+control alt keycode 60 = VoidSymbol
+control alt keycode 61 = VoidSymbol
+control alt keycode 62 = VoidSymbol
+control alt keycode 63 = VoidSymbol
+control alt keycode 64 = VoidSymbol
+control alt keycode 65 = VoidSymbol
+control alt keycode 66 = VoidSymbol
+control alt keycode 67 = VoidSymbol
+control alt keycode 68 = VoidSymbol
+control alt keycode 87 = VoidSymbol
+control alt keycode 88 = VoidSymbol
+alt keycode 59 = VoidSymbol
+alt keycode 60 = VoidSymbol
+alt keycode 61 = VoidSymbol
+alt keycode 62 = VoidSymbol
+alt keycode 63 = VoidSymbol
+alt keycode 64 = VoidSymbol
+alt keycode 65 = VoidSymbol
+alt keycode 66 = VoidSymbol
+alt keycode 67 = VoidSymbol
+alt keycode 68 = VoidSymbol
+alt keycode 87 = VoidSymbol
+alt keycode 88 = VoidSymbol
+EOF_KMAP
+loadkeys /etc/console-setup/disable-vts.kmap 2>/dev/null || true
+
+cat <<EOF_SVC > /etc/systemd/system/disable-vt-switching.service
+[Unit]
+Description=Disable Console VT Switching Keys
+DefaultDependencies=no
+After=systemd-vconsole-setup.service
+Before=kiosk-display.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/loadkeys /etc/console-setup/disable-vts.kmap
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+systemctl enable disable-vt-switching.service 2>/dev/null || true
 
 # Customize Systemd units for the detected user and UID
 echo -e "${GREEN}[5/6] Registering Systemd Services...${NC}"
