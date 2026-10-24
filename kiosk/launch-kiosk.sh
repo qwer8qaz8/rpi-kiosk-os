@@ -275,7 +275,7 @@ let secretBuffer = '';
 let secretListenTimer = null;
 let secretIndicatorEl = null;
 
-function showCornerIndicator(status = 'listening') {
+function showCornerIndicator(status = 'listening', extra = '') {
     if (!secretIndicatorEl) {
         secretIndicatorEl = document.createElement('div');
         secretIndicatorEl.id = 'rpi-kiosk-secret-indicator';
@@ -284,7 +284,7 @@ function showCornerIndicator(status = 'listening') {
             top: 14px;
             right: 14px;
             z-index: 2147483647;
-            padding: 7px 14px;
+            padding: 8px 16px;
             border-radius: 20px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             font-size: 13px;
@@ -292,8 +292,8 @@ function showCornerIndicator(status = 'listening') {
             display: flex;
             align-items: center;
             gap: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-            transition: all 0.2s ease;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.7);
+            transition: all 0.15s ease;
             pointer-events: none;
             user-select: none;
         `;
@@ -304,17 +304,18 @@ function showCornerIndicator(status = 'listening') {
         secretIndicatorEl.style.background = 'rgba(15, 23, 42, 0.95)';
         secretIndicatorEl.style.border = '1px solid #38bdf8';
         secretIndicatorEl.style.color = '#38bdf8';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px #38bdf8;"></span><span>● Listening...</span>';
+        const displayPrompt = extra ? extra : 'type Kiosk';
+        secretIndicatorEl.innerHTML = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px #38bdf8;"></span><span>● Listening [${displayPrompt}]</span>`;
     } else if (status === 'success') {
         secretIndicatorEl.style.background = 'rgba(6, 78, 59, 0.96)';
         secretIndicatorEl.style.border = '1px solid #34d399';
         secretIndicatorEl.style.color = '#34d399';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Admin Workstation Active</span>';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Unlocking...</span>';
     } else if (status === 'error') {
         secretIndicatorEl.style.background = 'rgba(127, 29, 29, 0.96)';
         secretIndicatorEl.style.border = '1px solid #f87171';
         secretIndicatorEl.style.color = '#f87171';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Invalid Code</span>';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Cancelled</span>';
     }
     secretIndicatorEl.style.display = 'flex';
 }
@@ -429,6 +430,8 @@ window.addEventListener('keydown', function(e) {
     // If user presses Escape while listening in corner: cancel listening mode
     if (secretListenMode && e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
         hideCornerIndicator();
         return false;
     }
@@ -443,6 +446,7 @@ window.addEventListener('keydown', function(e) {
     if (isShortcut) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
 
         // If in Admin Desktop mode, exiting desktop mode:
         if (window.location.pathname.includes('/desktop') || window.__kiosk_workstation_active) {
@@ -465,14 +469,24 @@ window.addEventListener('keydown', function(e) {
         return false;
     }
 
-    // When Secret Listen Mode is active: record typed characters
-    if (secretListenMode && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        if (e.key && e.key.length === 1) {
+    // When Secret Listen Mode is active: INTERCEPT AND CONSUME ALL KEYS
+    if (secretListenMode) {
+        // ALWAYS prevent default so web page (Home Assistant) never sees any keystroke!
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        if (e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
             secretBuffer += e.key;
+            showCornerIndicator('listening', secretBuffer.replace(/./g, '•'));
+
             // 1. When user types 'Kiosk' with uppercase K -> open password prompt
             if (secretBuffer.endsWith('Kiosk')) {
-                hideCornerIndicator();
-                openPasswordModal();
+                showCornerIndicator('success');
+                setTimeout(() => {
+                    hideCornerIndicator();
+                    openPasswordModal();
+                }, 250);
                 return false;
             }
 
@@ -492,6 +506,7 @@ window.addEventListener('keydown', function(e) {
                 return false;
             }
         }
+        return false;
     }
 
     // B) EMERGENCY PANIC LOCK: Ctrl+Alt+Shift+L or Ctrl+Alt+Shift+Q
@@ -574,6 +589,24 @@ window.addEventListener('keydown', function(e) {
     if (/^f[1-9][0-2]?$/i.test(e.key)) {
         e.preventDefault();
         e.stopPropagation();
+        return false;
+    }
+}, true);
+
+window.addEventListener('keypress', function(e) {
+    if (secretListenMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return false;
+    }
+}, true);
+
+window.addEventListener('keyup', function(e) {
+    if (secretListenMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
         return false;
     }
 }, true);
