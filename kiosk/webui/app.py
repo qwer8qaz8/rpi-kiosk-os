@@ -479,6 +479,20 @@ def api_admin_verify_pin():
         }), 401
 
 
+@app.route("/api/admin/exit_fullscreen", methods=["POST", "OPTIONS"])
+def api_admin_exit_fullscreen():
+    if request.method == "OPTIONS":
+        return "", 200
+    try:
+        env = dict(os.environ)
+        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+        env["WAYLAND_DISPLAY"] = "wayland-0"
+        subprocess.Popen(["wtype", "-k", "F11"], env=env)
+    except Exception as e:
+        logger.warning(f"Error sending F11: {e}")
+    return jsonify({"success": True, "message": "Fullscreen toggled"})
+
+
 @app.route("/api/admin/change_pin", methods=["POST", "OPTIONS"])
 def api_admin_change_pin():
     if request.method == "OPTIONS":

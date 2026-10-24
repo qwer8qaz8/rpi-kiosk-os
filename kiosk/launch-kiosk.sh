@@ -262,9 +262,134 @@ function resetAdminInactivity() {
     }
 }
 
+let secretListenMode = false;
+let secretBuffer = '';
+let secretListenTimer = null;
+let secretIndicatorEl = null;
+
+function showCornerIndicator(status = 'listening') {
+    if (!secretIndicatorEl) {
+        secretIndicatorEl = document.createElement('div');
+        secretIndicatorEl.id = 'rpi-kiosk-secret-indicator';
+        secretIndicatorEl.style.cssText = `
+            position: fixed;
+            top: 14px;
+            right: 14px;
+            z-index: 2147483647;
+            padding: 7px 14px;
+            border-radius: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            transition: all 0.2s ease;
+            pointer-events: none;
+            user-select: none;
+        `;
+        document.body.appendChild(secretIndicatorEl);
+    }
+
+    if (status === 'listening') {
+        secretIndicatorEl.style.background = 'rgba(15, 23, 42, 0.94)';
+        secretIndicatorEl.style.border = '1px solid #38bdf8';
+        secretIndicatorEl.style.color = '#38bdf8';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px #38bdf8;"></span><span>Listening...</span>';
+    } else if (status === 'success') {
+        secretIndicatorEl.style.background = 'rgba(6, 78, 59, 0.96)';
+        secretIndicatorEl.style.border = '1px solid #34d399';
+        secretIndicatorEl.style.color = '#34d399';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Exiting Fullscreen</span>';
+    } else if (status === 'error') {
+        secretIndicatorEl.style.background = 'rgba(127, 29, 29, 0.96)';
+        secretIndicatorEl.style.border = '1px solid #f87171';
+        secretIndicatorEl.style.color = '#f87171';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Cancelled</span>';
+    }
+    secretIndicatorEl.style.display = 'flex';
+}
+
+function hideCornerIndicator() {
+    if (secretIndicatorEl) {
+        secretIndicatorEl.style.display = 'none';
+    }
+    secretListenMode = false;
+    secretBuffer = '';
+    if (secretListenTimer) clearTimeout(secretListenTimer);
+}
+
 // 1. Advanced Keyboard Shortcuts & Lockdown Handler
 window.addEventListener('keydown', function(e) {
-    // A) EMERGENCY PANIC LOCK: Ctrl+Alt+Shift+L or Ctrl+Alt+Shift+Q
+    // A) Secret Listen Mode Shortcut: Ctrl + Alt + = (or +)
+    if (e.ctrlKey && e.altKey && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.keyCode === 187)) {
+        e.preventDefault();
+        e.stopPropagation();
+        secretListenMode = true;
+        secretBuffer = '';
+        showCornerIndicator('listening');
+        if (secretListenTimer) clearTimeout(secretListenTimer);
+        secretListenTimer = setTimeout(() => {
+            hideCornerIndicator();
+        }, 10000); // 10 second timeout
+        return false;
+    }
+
+    // Handle Secret Listen Mode typing
+    if (secretListenMode) {
+        // Esc cancels and closes corner indicator
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            hideCornerIndicator();
+            return false;
+        }
+
+        // Enter submits buffered command
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (secretBuffer.trim().toLowerCase() === 'admin') {
+                showCornerIndicator('success');
+                // Exit Fullscreen mode!
+                try {
+                    if (document.fullscreenElement) {
+                        document.exitFullscreen().catch(() => {});
+                    }
+                } catch (err) {}
+                fetch('http://127.0.0.1:8080/api/admin/exit_fullscreen', { method: 'POST' }).catch(() => {});
+                window.__kiosk_unlocked = true;
+                setTimeout(() => {
+                    hideCornerIndicator();
+                }, 1500);
+            } else {
+                showCornerIndicator('error');
+                setTimeout(() => {
+                    hideCornerIndicator();
+                }, 900);
+            }
+            return false;
+        }
+
+        // Backspace
+        if (e.key === 'Backspace') {
+            e.preventDefault();
+            e.stopPropagation();
+            secretBuffer = secretBuffer.slice(0, -1);
+            return false;
+        }
+
+        // Buffer printable characters
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            secretBuffer += e.key;
+            return false;
+        }
+    }
+
+    // B) EMERGENCY PANIC LOCK: Ctrl+Alt+Shift+L or Ctrl+Alt+Shift+Q
     if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'L' || e.key === 'l' || e.key === 'Q' || e.key === 'q')) {
         e.preventDefault();
         e.stopPropagation();
@@ -1023,6 +1148,7 @@ function renderAdminUI() {
                         <div class="section-title">⚡ Advanced Shortcuts Reference</div>
                         <div class="shortcut-grid">
                             <div class="shortcut-item"><span>Admin Menu:</span> <kbd>Ctrl+Alt+A</kbd></div>
+                            <div class="shortcut-item"><span>Exit Fullscreen:</span> <kbd>Ctrl+Alt+=</kbd> type admin</div>
                             <div class="shortcut-item"><span>Panic Relock:</span> <kbd>Ctrl+Alt+Shift+L</kbd></div>
                             <div class="shortcut-item"><span>Quick Reboot:</span> <kbd>Ctrl+Alt+Shift+R</kbd></div>
                             <div class="shortcut-item"><span>Screen Toggle:</span> <kbd>Ctrl+Alt+Shift+B</kbd></div>
@@ -1214,13 +1340,13 @@ if [ -f "$HOME/.config/chromium/Default/Preferences" ]; then
     sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
 fi
 
-EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR" "--remote-debugging-port=9222")
+EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR" "--remote-debugging-port=9222" "--remote-allow-origins=*")
 
-# Launch Chromium locked in Standalone Application Kiosk mode (--app disables tab strips and Ctrl+T shortcuts)
+# Launch Chromium locked in Standalone Application mode (--app disables tab strips and Ctrl+T shortcuts)
 exec "$CHROMIUM_BIN" \
   "${EXTRA_CHROME_FLAGS[@]}" \
   --app="$DASHBOARD_URL" \
-  --kiosk \
+  --start-fullscreen \
   --noerrdialogs \
   --disable-infobars \
   --no-first-run \
