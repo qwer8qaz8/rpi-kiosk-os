@@ -119,8 +119,15 @@ except Exception:
     print('http://*:8123/*')
 ")
 
-# Build enterprise security policy JSON across all standard Chromium paths
-python3 -c "
+# Check if Admin Workstation mode is active
+if [ -f "/tmp/kiosk-admin-workstation" ]; then
+    echo "[kiosk] Admin Workstation Mode active: removing lockdown policies..."
+    rm -f /etc/chromium/policies/managed/kiosk_security_policy.json \
+          /etc/chromium-browser/policies/managed/kiosk_security_policy.json \
+          /etc/opt/chrome/policies/managed/kiosk_security_policy.json 2>/dev/null || true
+else
+    # Build enterprise security policy JSON across all standard Chromium paths
+    python3 -c "
 import json, os, urllib.parse
 
 config_file = '$CONFIG_FILE'
@@ -199,6 +206,7 @@ for d in policy_dirs:
     except Exception:
         pass
 " 2>/dev/null || true
+fi
 
 # Load Auto-Login credentials from config if configured
 AUTOLOGIN_USER=$(python3 -c "
@@ -376,7 +384,13 @@ function openPasswordModal() {
             if (data.authenticated || data.success) {
                 submitBtn.textContent = '✓ Unlocking...';
                 submitBtn.style.background = '#10b981';
-                fetch('http://127.0.0.1:8080/api/admin/enable_workstation', { method: 'POST' }).catch(() => {});
+                fetch('http://127.0.0.1:8080/api/admin/enable_workstation', { method: 'POST' })
+                    .then(() => {
+                        window.location.href = 'http://127.0.0.1:8080/desktop';
+                    })
+                    .catch(() => {
+                        window.location.href = 'http://127.0.0.1:8080/desktop';
+                    });
             } else {
                 submitBtn.textContent = 'Unlock (Enter)';
                 submitBtn.disabled = false;

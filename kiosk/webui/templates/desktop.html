@@ -682,7 +682,13 @@
     function emergencyLock() {
       fetch('/api/admin/disable_workstation', { method: 'POST' })
         .then(() => {
-          window.location.href = '/';
+          fetch('/api/admin/status').then(r => r.json()).then(d => {
+            if (d && d.dashboard_url) {
+              window.location.href = d.dashboard_url;
+            } else {
+              window.location.href = '/';
+            }
+          }).catch(() => { window.location.href = '/'; });
         })
         .catch(() => {
           window.location.href = '/';

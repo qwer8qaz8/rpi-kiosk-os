@@ -483,25 +483,30 @@ def api_admin_logs():
 def api_update_status():
     return jsonify(UPDATE_STATE)
 
+def navigate_chromium(url):
+    try:
+        import urllib.request
+        pages = json.loads(urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=2).read())
+        for p in pages:
+            if p.get("type") == "page" and "id" in p:
+                pid = p["id"]
+                nav_req = urllib.request.Request(
+                    f"http://127.0.0.1:9222/json/navigate?url={urllib.parse.quote(url)}",
+                    headers={"User-Agent": "kiosk-webui"}
+                )
+                urllib.request.urlopen(nav_req, timeout=2)
+                return True
+    except Exception as e:
+        logger.warning(f"CDP navigate error: {e}")
+    return False
+
 @app.route("/api/display/navigate", methods=["POST", "OPTIONS"])
 def api_display_navigate():
     if request.method == "OPTIONS":
         return "", 200
     req = request.get_json(silent=True) or request.form
     target_url = req.get("url", "http://127.0.0.1:8080/updating")
-    try:
-        import urllib.request
-        pages = json.loads(urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=2).read())
-        if pages and "id" in pages[0]:
-            pid = pages[0]["id"]
-            # Tell Chromium CDP to navigate
-            nav_req = urllib.request.Request(
-                f"http://127.0.0.1:9222/json/navigate?url={urllib.parse.quote(target_url)}",
-                headers={"User-Agent": "kiosk-webui"}
-            )
-            urllib.request.urlopen(nav_req, timeout=2)
-    except Exception as e:
-        logger.warning(f"CDP navigation failed: {e}")
+    navigate_chromium(target_url)
     return jsonify({"success": True, "navigated_to": target_url})
 
 @app.route("/api/admin/enable_workstation", methods=["POST", "OPTIONS"])
@@ -515,8 +520,8 @@ def api_admin_enable_workstation():
         Path("/tmp/kiosk-admin-workstation").touch()
         # Relax policy so admin can open tabs and browse anywhere
         subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--unlock"], capture_output=True)
-        # Restart display into full tabbed browser mode
-        subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"], capture_output=True)
+        # Direct Chromium smoothly to the macOS Desktop without restarting Cage compositor!
+        navigate_chromium("http://127.0.0.1:8080/desktop")
     except Exception as e:
         logger.error(f"Error enabling workstation: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -534,8 +539,10 @@ def api_admin_disable_workstation():
             Path("/tmp/kiosk-admin-workstation").unlink()
         # Restore strict enterprise security lockdown policy
         subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
-        # Restart display into locked single-window fullscreen kiosk mode
-        subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"], capture_output=True)
+        # Navigate Chromium back to dashboard URL smoothly without restarting Cage compositor!
+        cfg = load_config()
+        dash_url = cfg.get("dashboard_url", "http://homeassistant.local:8123/lovelace/0?kiosk")
+        navigate_chromium(dash_url)
     except Exception as e:
         logger.error(f"Error disabling workstation: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
