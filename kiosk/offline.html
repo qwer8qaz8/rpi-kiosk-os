@@ -146,18 +146,7 @@
       </svg>
     </div>
     <h1>Home Assistant Offline</h1>
-    <p>The kiosk display cannot connect to your Home Assistant instance. Reconnection will happen automatically once the network is restored.</p>
-
-    <div class="meta-box">
-      <div class="meta-row">
-        <span class="meta-label">Target URL:</span>
-        <span class="meta-value" id="targetUrlText">Checking...</span>
-      </div>
-      <div class="meta-row">
-        <span class="meta-label">Status:</span>
-        <span class="meta-value" style="color: #f87171;">Connection Refused / Unreachable</span>
-      </div>
-    </div>
+    <p>Cannot reach Home Assistant. Reconnection will happen automatically once connection is restored.</p>
 
     <button class="btn-retry" onclick="reconnectNow()">
       🔄 Reconnect Now
@@ -174,7 +163,6 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     const targetUrl = params.get('url') || 'http://homeassistant.local:8123/lovelace/0?kiosk';
-    document.getElementById('targetUrlText').textContent = targetUrl;
 
     let timeLeft = 5;
     const countEl = document.getElementById('countdown');

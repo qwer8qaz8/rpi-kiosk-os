@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# kioskos - The Official KioskOS CLI Management Tool
+# kioskos - Master Command-Line Interface for Home Assistant Kiosk Appliance
+# 8Air • SuperG Technologies
 # ==============================================================================
 
 set -e
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
-
 CONFIG_FILE="/etc/kiosk/config.json"
 [ ! -f "$CONFIG_FILE" ] && CONFIG_FILE="/opt/kiosk/config.json"
+
+BOLD="\033[1m"
+GREEN="\033[32m"
+CYAN="\033[36m"
+YELLOW="\033[33m"
+RED="\033[31m"
+NC="\033[0m"
 
 show_banner() {
 cat << "EOF"
@@ -81,13 +81,214 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
 
   status)
     show_banner
-    echo -e "${BOLD}Appliance Status:${NC}"
+    echo -e "${BOLD}Appliance Status & Telemetry:${NC}"
     echo -e "  • Dashboard URL:  ${CYAN}$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('dashboard_url', 'Not configured'))" 2>/dev/null || echo 'Unknown')${NC}"
     echo -e "  • Screen Power:   $(sudo /usr/local/bin/kiosk-screen status 2>/dev/null || echo 'ON')"
+    echo -e "  • Brightness:     $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('screen_brightness', 100))" 2>/dev/null || echo '100')%"
+    echo -e "  • Rotation:       $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('display_rotation', 'normal'))" 2>/dev/null || echo 'normal')"
     echo -e "  • IP Address:     ${GREEN}$(hostname -I | awk '{print $1}')${NC}"
     echo -e "  • Display Engine: $(systemctl is-active kiosk-display 2>/dev/null || echo 'unknown')"
     echo -e "  • Chime Service:  $(systemctl is-active kiosk-chime 2>/dev/null || echo 'unknown') (http://$(hostname -I | awk '{print $1}'):8124/chime?sound=bing)"
+    echo -e "  • Touch Daemon:   $(systemctl is-active kiosk-camera-touch.service 2>/dev/null || echo 'inactive')"
     echo -e "  • Mode:           ${GREEN}Single-Purpose Lockdown Fullscreen${NC}"
+    ;;
+
+  settings|config)
+    sub="${2:-list}"
+    case "$sub" in
+      set)
+        key="$3"
+        val="$4"
+        if [ -z "$key" ] || [ -z "$val" ]; then
+          echo -e "${RED}Usage:${NC} kioskos set <setting> <value>"
+          echo -e "Example: kioskos set brightness 80"
+          exit 1
+        fi
+        python3 -c "
+import json, sys, subprocess
+
+key = '$key'.strip().lower()
+val = '$val'.strip()
+
+cfg_file = '$CONFIG_FILE'
+with open(cfg_file, 'r') as f:
+    cfg = json.load(f)
+
+# Handle boolean and numeric types
+if val.lower() in ['true', 'on', 'yes', '1']:
+    parsed_val = True
+elif val.lower() in ['false', 'off', 'no', '0']:
+    parsed_val = False
+else:
+    try:
+        parsed_val = int(val)
+    except ValueError:
+        parsed_val = val
+
+# Mapping
+reload_display = False
+restart_touch = False
+
+if key in ['url', 'dashboard_url']:
+    cfg['dashboard_url'] = str(parsed_val)
+    reload_display = True
+elif key in ['brightness', 'screen_brightness']:
+    b = max(10, min(100, int(parsed_val)))
+    cfg['screen_brightness'] = b
+    cfg['brightness'] = b
+    subprocess.run(['sudo', '/usr/local/bin/kiosk-screen', 'brightness', str(b)], capture_output=True)
+elif key in ['power', 'screen', 'screen_on']:
+    p = bool(parsed_val)
+    cfg['screen_on'] = p
+    subprocess.run(['sudo', '/usr/local/bin/kiosk-screen', 'on' if p else 'off'], capture_output=True)
+elif key in ['rotation', 'display_rotation']:
+    if str(parsed_val) in ['normal', '90', '180', '270']:
+        cfg['display_rotation'] = str(parsed_val)
+        subprocess.run(['sudo', '/usr/local/bin/kiosk-screen', 'rotate', str(parsed_val)], capture_output=True)
+        reload_display = True
+elif key in ['chime', 'startup_chime']:
+    cfg['startup_chime'] = bool(parsed_val)
+elif key in ['touch', 'touch_enabled']:
+    if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+    cfg['camera_touch']['enabled'] = bool(parsed_val)
+    action = 'start' if parsed_val else 'stop'
+    subprocess.run(['sudo', 'systemctl', action, 'kiosk-camera-touch.service'], capture_output=True)
+elif key in ['touch_mode', 'camera_mode']:
+    if str(parsed_val) in ['single', 'dual', 'kinect']:
+        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+        cfg['camera_touch']['mode'] = str(parsed_val)
+        restart_touch = True
+elif key in ['touch_dynamic', 'dynamic_tracking']:
+    if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
+    cfg['camera_touch']['dynamic_tracking'] = bool(parsed_val)
+    restart_touch = True
+elif key in ['ha_user', 'ha_username']:
+    cfg['ha_username'] = str(parsed_val)
+    reload_display = True
+elif key in ['ha_pass', 'ha_password']:
+    cfg['ha_password'] = str(parsed_val)
+    reload_display = True
+elif key in ['night_mode', 'night_mode_enabled']:
+    cfg['night_mode_enabled'] = bool(parsed_val)
+elif key in ['mqtt_broker']:
+    if 'mqtt' not in cfg: cfg['mqtt'] = {}
+    cfg['mqtt']['broker'] = str(parsed_val)
+    subprocess.run(['sudo', 'systemctl', 'restart', 'kiosk-mqtt.service'], capture_output=True)
+else:
+    cfg[key] = parsed_val
+
+with open(cfg_file, 'w') as f:
+    json.dump(cfg, f, indent=2)
+
+print(f'\033[32m✓ Setting \'{key}\' updated to: {parsed_val}\033[0m')
+
+if reload_display:
+    print('• Reloading display engine...')
+    subprocess.run(['sudo', 'systemctl', 'restart', 'kiosk-display'])
+if restart_touch:
+    print('• Restarting touch digitizer...')
+    subprocess.run(['sudo', 'systemctl', 'restart', 'kiosk-camera-touch.service'])
+"
+        ;;
+
+      get)
+        key="$3"
+        if [ -z "$key" ]; then
+          echo -e "${RED}Usage:${NC} kioskos get <setting>"
+          exit 1
+        fi
+        python3 -c "
+import json
+with open('$CONFIG_FILE') as f:
+    cfg = json.load(f)
+key = '$key'.strip().lower()
+mapped = {'url': 'dashboard_url', 'brightness': 'screen_brightness', 'power': 'screen_on', 'rotation': 'display_rotation', 'chime': 'startup_chime', 'ha_user': 'ha_username', 'ha_pass': 'ha_password'}
+k = mapped.get(key, key)
+if k == 'touch_mode':
+    print(cfg.get('camera_touch', {}).get('mode', 'single'))
+elif k == 'touch_dynamic':
+    print(cfg.get('camera_touch', {}).get('dynamic_tracking', False))
+elif k == 'mqtt_broker':
+    print(cfg.get('mqtt', {}).get('broker', ''))
+else:
+    print(cfg.get(k, 'Not set'))
+"
+        ;;
+
+      list|*)
+        python3 -c "
+import json
+with open('$CONFIG_FILE') as f:
+    cfg = json.load(f)
+
+print('=' * 80)
+print(' Home Assistant Kiosk Appliance Settings (/etc/kiosk/config.json)')
+print('=' * 80)
+print('')
+print('\033[1m[Display & Dashboard]\033[0m')
+print(f'  • url               {cfg.get(\"dashboard_url\", \"Not set\")}')
+print('                      (Home Assistant dashboard target URL)')
+print(f'  • screen_on         {cfg.get(\"screen_on\", True)}')
+print('                      (Hardware screen power: true / false)')
+print(f'  • brightness        {cfg.get(\"screen_brightness\", 100)}')
+print('                      (Screen backlight percentage: 10 - 100)')
+print(f'  • rotation          {cfg.get(\"display_rotation\", \"normal\")}')
+print('                      (Display orientation: normal, 90, 180, 270)')
+print('')
+print('\033[1m[Audio & Notifications]\033[0m')
+print(f'  • chime             {cfg.get(\"startup_chime\", True)}')
+print('                      (Startup & notification sound enabled: true / false)')
+print(f'  • notification_url  http://\033[32m<KIOSK_IP>:8124/chime?sound=bing\033[0m')
+print('                      (HTTP endpoint for Home Assistant rest_command)')
+print('')
+print('\033[1m[Optical Camera Touchscreen & Kinect]\033[0m')
+touch = cfg.get(\"camera_touch\", {})
+print(f'  • touch_enabled     {touch.get(\"enabled\", True)}')
+print('                      (Optical camera touch digitizer: true / false)')
+print(f'  • touch_mode        {touch.get(\"mode\", \"single\")}')
+print('                      (Sensor tracking mode: single, dual, kinect)')
+print(f'  • touch_dynamic     {touch.get(\"dynamic_tracking\", False)}')
+print('                      (Dynamic mini-markers for moving cameras: true / false)')
+print('')
+print('\033[1m[Home Assistant Auto-Login]\033[0m')
+print(f'  • ha_user           {cfg.get(\"ha_username\", \"kiosk\")}')
+print('                      (Auto-login username for dashboard session)')
+has_pass = 'Configured' if cfg.get(\"ha_password\") else 'None'
+print(f'  • ha_pass           [{has_pass}]')
+print('                      (Auto-login password for dashboard session)')
+print('')
+print('\033[1m[Automations & Schedule]\033[0m')
+print(f'  • night_mode        {cfg.get(\"night_mode_enabled\", True)}')
+print('                      (Auto-dim backlight during scheduled hours)')
+print(f'  • night_start       {cfg.get(\"night_mode_start\", \"23:00\")}')
+print('                      (Night mode start time HH:MM)')
+print(f'  • night_end         {cfg.get(\"night_mode_end\", \"07:00\")}')
+print('                      (Night mode end time HH:MM)')
+mqtt = cfg.get(\"mqtt\", {})
+print(f'  • mqtt_broker       {mqtt.get(\"broker\", \"192.168.86.29\")}')
+print('                      (Home Assistant MQTT telemetry broker)')
+print('')
+print('-' * 80)
+print('To change any setting from CLI:')
+print('  \033[32mkioskos set <setting> <value>\033[0m')
+print('  e.g.: kioskos set brightness 80')
+print('        kioskos set url http://homeassistant.local:8123/lovelace/0')
+print('        kioskos set rotation 90')
+print('        kioskos set touch_mode single')
+print('=' * 80)
+"
+        ;;
+    esac
+    ;;
+
+  set)
+    shift
+    /opt/kiosk/kioskos settings set "$@"
+    ;;
+
+  get)
+    shift
+    /opt/kiosk/kioskos settings get "$@"
     ;;
 
   url)
@@ -96,231 +297,37 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
       echo -e "${RED}Error:${NC} Missing URL. Usage: kioskos url <dashboard_url>"
       exit 1
     fi
-    echo -e "${CYAN}Setting Dashboard URL to:${NC} $new_url"
-    python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['dashboard_url'] = '$new_url'
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['dashboard_url'] = '$new_url'
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-    echo -e "${GREEN}✓ Dashboard URL updated.${NC} Reloading display..."
-    sudo systemctl restart kiosk-display
+    /opt/kiosk/kioskos set url "$new_url"
     ;;
 
-  update)
-    echo -e "${CYAN}[kioskos] Launching System Update...${NC}"
-    if [ -n "$WAYLAND_DISPLAY" ] || [ -f /run/user/1000/wayland-0 ]; then
-        /opt/kiosk/apply-update.sh
+  screen)
+    action="${2:-status}"
+    case "$action" in
+      on|off)
+        /opt/kiosk/kioskos set screen "$action"
+        ;;
+      status|*)
+        sudo /usr/local/bin/kiosk-screen status
+        ;;
+    esac
+    ;;
+
+  brightness)
+    val="$2"
+    if [ -z "$val" ]; then
+      echo -e "Current brightness: $(/opt/kiosk/kioskos get brightness)%"
     else
-        sudo /opt/kiosk/kiosk-config.sh --update
-        sudo systemctl reboot
+      /opt/kiosk/kioskos set brightness "$val"
     fi
     ;;
 
-  admin)
-    sub="${2:-start}"
-    case "$sub" in
-      start|open)
-        echo -e "${CYAN}[kioskos] Switching to Admin Desktop Mode...${NC}"
-        /opt/kiosk/start-desktop.sh
-        ;;
-      enable|on)
-        echo -e "${GREEN}[kioskos] Enabling Admin Mode...${NC}"
-        python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['admin_enabled'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['admin_enabled'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-        echo -e "${GREEN}✓ Admin mode enabled.${NC}"
-        ;;
-      disable|off)
-        echo -e "${YELLOW}[kioskos] Disabling Admin Mode...${NC}"
-        python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['admin_enabled'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['admin_enabled'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-        echo -e "${YELLOW}✓ Admin mode disabled (on-device admin access blocked).${NC}"
-        ;;
-      status|*)
-        echo -e "${BOLD}Admin Mode Status:${NC}"
-        echo -e "  • Admin Enabled: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('admin_enabled', True))" 2>/dev/null || echo 'True')"
-        echo -e "  • Mode Active:   $([ -f /tmp/kiosk-admin-workstation ] && echo "${YELLOW}Admin Desktop Mode${NC}" || echo "${GREEN}Fullscreen Locked Kiosk${NC}")"
-        ;;
-    esac
-    ;;
-
-  speed)
-    mode="${2:-status}"
-    case "$mode" in
-      turbo|kiosk-only)
-        echo -e "${YELLOW}[kioskos] Enabling Turbo Appliance Mode (Kiosk-Only, admin listeners suppressed for maximum speed)...${NC}"
-        python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['speed_mode'] = 'turbo'
-        cfg['admin_enabled'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['speed_mode'] = 'turbo'
-        cfg['admin_enabled'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-        echo -e "${GREEN}✓ Turbo Mode active.${NC} Restarting kiosk..."
-        sudo systemctl restart kiosk-display
-        ;;
-      standard|normal)
-        echo -e "${GREEN}[kioskos] Setting Standard Mode (Admin and listeners enabled)...${NC}"
-        python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['speed_mode'] = 'standard'
-        cfg['admin_enabled'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['speed_mode'] = 'standard'
-        cfg['admin_enabled'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-        echo -e "${GREEN}✓ Standard Mode active.${NC} Restarting kiosk..."
-        sudo systemctl restart kiosk-display
-        ;;
-      status|*)
-        echo -e "${BOLD}Speed & Performance Mode:${NC}"
-        echo -e "  • Speed Mode:   $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('speed_mode', 'standard'))" 2>/dev/null || echo 'standard')"
-        echo -e "  • Admin Allowed: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('admin_enabled', True))" 2>/dev/null || echo 'True')"
-        ;;
-    esac
-    ;;
-
-  webui)
-    sub="${2:-status}"
-    case "$sub" in
-      start|on|enable)
-        echo -e "${GREEN}[kioskos] Enabling and starting Remote WebUI service...${NC}"
-        sudo systemctl enable kiosk-webui.service 2>/dev/null || true
-        sudo systemctl restart kiosk-webui.service
-        echo -e "${GREEN}✓ WebUI running at http://$(hostname -I | awk '{print $1}'):8080${NC}"
-        ;;
-      stop|off|disable)
-        echo -e "${YELLOW}[kioskos] Stopping and disabling Remote WebUI service...${NC}"
-        sudo systemctl stop kiosk-webui.service 2>/dev/null || true
-        sudo systemctl disable kiosk-webui.service 2>/dev/null || true
-        echo -e "${YELLOW}✓ WebUI disabled.${NC}"
-        ;;
-      status|*)
-        echo -e "${BOLD}Remote WebUI Status:${NC}"
-        echo -e "  • Service: $(systemctl is-active kiosk-webui 2>/dev/null || echo 'unknown')"
-        echo -e "  • Enabled: $(systemctl is-enabled kiosk-webui 2>/dev/null || echo 'unknown')"
-        echo -e "  • URL:     http://$(hostname -I | awk '{print $1}'):8080"
-        ;;
-    esac
-    ;;
-
-  mcp)
-    sub="${2:-run}"
-    case "$sub" in
-      run|start)
-        python3 /opt/kiosk/kiosk-mcp.py
-        ;;
-      test)
-        echo -e "${CYAN}[kioskos] Testing MCP Server Tools...${NC}"
-        echo '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}' | python3 /opt/kiosk/kiosk-mcp.py
-        echo '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}' | python3 /opt/kiosk/kiosk-mcp.py
-        ;;
-      status|*)
-        echo -e "${BOLD}KioskOS Model Context Protocol (MCP) Server:${NC}"
-        echo -e "  • Path:        /opt/kiosk/kiosk-mcp.py"
-        echo -e "  • Protocol:    MCP JSON-RPC 2.0 (stdio)"
-        echo -e "  • Tools:       kiosk_get_status, kiosk_set_url, kiosk_set_power,"
-        echo -e "                 kiosk_set_brightness, kiosk_set_rotation, kiosk_speed_mode,"
-        echo -e "                 kiosk_touch_control, kiosk_trigger_chime, kiosk_reboot"
-        echo ""
-        echo -e "To connect from Claude Desktop / Antigravity / AI assistant, add to mcpServers:"
-        echo -e '  "kioskos": {'
-        echo -e '    "command": "ssh",'
-        echo -e '    "args": ["pi@<PI_IP>", "kioskos mcp run"]'
-        echo -e '  }'
-        ;;
-    esac
-    ;;
-
-  lock)
-    echo -e "${CYAN}[kioskos] Locking back to Fullscreen Kiosk Mode...${NC}"
-    /opt/kiosk/lock-kiosk.sh
-    ;;
-
-  restart)
-    echo -e "${CYAN}[kioskos] Restarting Kiosk Display...${NC}"
-    sudo systemctl restart kiosk-display
-    ;;
-
-  reboot)
-    echo -e "${YELLOW}[kioskos] Rebooting Raspberry Pi...${NC}"
-    sudo systemctl reboot
-    ;;
-
-  maintenance)
-    action="${2:-toggle}"
-    echo -e "${CYAN}[kioskos] Maintenance Mode action: $action${NC}"
-    curl -s -X POST -H "Content-Type: application/json" -d "{\"action\": \"$action\"}" http://127.0.0.1:8080/api/maintenance
-    echo ""
-    ;;
-
-  backup)
-    echo -e "${CYAN}[kioskos] Creating Clean System Backup (secrets stripped)...${NC}"
-    /opt/kiosk/backup-kiosk.sh
+  rotate)
+    val="$2"
+    if [ -z "$val" ]; then
+      echo -e "Current rotation: $(/opt/kiosk/kioskos get rotation)"
+    else
+      /opt/kiosk/kioskos set rotation "$val"
+    fi
     ;;
 
   chime)
@@ -331,45 +338,11 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
         /opt/kiosk/play-chime.sh "$sound"
         ;;
       on|enable)
-        echo -e "${GREEN}[kioskos] Enabling audio chime...${NC}"
-        python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['startup_chime'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['startup_chime'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
+        /opt/kiosk/kioskos set chime true
         /opt/kiosk/play-chime.sh bing
         ;;
       off|disable)
-        echo -e "${YELLOW}[kioskos] Disabling audio chime...${NC}"
-        python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['startup_chime'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        cfg['startup_chime'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
+        /opt/kiosk/kioskos set chime false
         ;;
       *)
         echo -e "${CYAN}[kioskos] Playing chime: $sound...${NC}"
@@ -392,101 +365,24 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
         WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}" python3 /opt/kiosk/camera-touch/touch_calibration.py "$cam_id"
         ;;
       start|on)
-        echo -e "${GREEN}[kioskos] Starting Camera Touchscreen Service...${NC}"
-        sudo systemctl enable kiosk-camera-touch.service 2>/dev/null || true
-        sudo systemctl restart kiosk-camera-touch.service
+        /opt/kiosk/kioskos set touch true
         ;;
       stop|off)
-        echo -e "${YELLOW}[kioskos] Stopping Camera Touchscreen Service...${NC}"
-        sudo systemctl stop kiosk-camera-touch.service 2>/dev/null || true
-        sudo systemctl disable kiosk-camera-touch.service 2>/dev/null || true
+        /opt/kiosk/kioskos set touch false
         ;;
       dynamic)
         dyn_action="${3:-status}"
         case "$dyn_action" in
-          on|enable)
-            echo -e "${GREEN}[kioskos] Enabling Dynamic Camera Mode (subtle corner mini-markers for moving cameras)...${NC}"
-            python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
-        cfg['camera_touch']['dynamic_tracking'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
-        cfg['camera_touch']['dynamic_tracking'] = True
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-            sudo systemctl restart kiosk-camera-touch.service 2>/dev/null || true
-            echo -e "${GREEN}✓ Dynamic Camera tracking enabled.${NC}"
-            ;;
-          off|disable)
-            echo -e "${YELLOW}[kioskos] Disabling Dynamic Camera Mode...${NC}"
-            python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
-        cfg['camera_touch']['dynamic_tracking'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
-        cfg['camera_touch']['dynamic_tracking'] = False
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-            sudo systemctl restart kiosk-camera-touch.service 2>/dev/null || true
-            echo -e "${YELLOW}✓ Dynamic Camera tracking disabled.${NC}"
-            ;;
-          *)
-            echo -e "Dynamic Camera Mode: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('camera_touch', {}).get('dynamic_tracking', False))" 2>/dev/null || echo 'False')"
-            ;;
+          on|enable)  /opt/kiosk/kioskos set touch_dynamic true ;;
+          off|disable) /opt/kiosk/kioskos set touch_dynamic false ;;
+          *) echo -e "Dynamic Camera Tracking: $(/opt/kiosk/kioskos get touch_dynamic)" ;;
         esac
         ;;
       mode)
         new_mode="${3:-status}"
         case "$new_mode" in
-          single|dual|kinect)
-            echo -e "${GREEN}[kioskos] Setting Camera Touch Mode to: $new_mode...${NC}"
-            python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
-        cfg['camera_touch']['mode'] = '$new_mode'
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-" 2>/dev/null || sudo python3 -c "
-import json
-for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
-    try:
-        with open(p, 'r') as f: cfg = json.load(f)
-        if 'camera_touch' not in cfg: cfg['camera_touch'] = {}
-        cfg['camera_touch']['mode'] = '$new_mode'
-        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
-    except Exception: pass
-"
-            sudo systemctl restart kiosk-camera-touch.service 2>/dev/null || true
-            echo -e "${GREEN}✓ Camera Touch Mode set to $new_mode.${NC}"
-            ;;
-          *)
-            echo -e "Active Camera Mode: $(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('camera_touch', {}).get('mode', 'single'))" 2>/dev/null || echo 'single')"
-            ;;
+          single|dual|kinect) /opt/kiosk/kioskos set touch_mode "$new_mode" ;;
+          *) echo -e "Active Camera Mode: $(/opt/kiosk/kioskos get touch_mode)" ;;
         esac
         ;;
       status|*)
@@ -498,7 +394,7 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
         echo -e "  • Calibration:  $([ -f /etc/kiosk/camera-touch-calibration.json ] && echo "${GREEN}Calibrated${NC}" || echo "${YELLOW}Uncalibrated (Run 'kioskos touch calibrate')${NC}")"
         echo ""
         echo -e "Subcommands:"
-        echo -e "  ${GREEN}kioskos touch test [cam]${NC}      Live camera test view & tracking"
+        echo -e "  ${GREEN}kioskos touch test [cam]${NC}      Live camera test view on display"
         echo -e "  ${GREEN}kioskos touch calibrate [cam]${NC} Fullscreen corner marker alignment"
         echo -e "  ${GREEN}kioskos touch start|stop${NC}      Enable/disable background service"
         echo -e "  ${GREEN}kioskos touch dynamic on|off${NC}  Toggle subtle dynamic mini-markers"
@@ -533,20 +429,75 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     esac
     ;;
 
+  mcp)
+    sub="${2:-run}"
+    case "$sub" in
+      run|start)
+        python3 /opt/kiosk/kiosk-mcp.py
+        ;;
+      test)
+        echo -e "${CYAN}[kioskos] Testing MCP Server Tools...${NC}"
+        echo '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}' | python3 /opt/kiosk/kiosk-mcp.py
+        echo '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}' | python3 /opt/kiosk/kiosk-mcp.py
+        ;;
+      status|*)
+        echo -e "${BOLD}KioskOS Model Context Protocol (MCP) Server:${NC}"
+        echo -e "  • Path:        /opt/kiosk/kiosk-mcp.py"
+        echo -e "  • Protocol:    MCP JSON-RPC 2.0 (stdio)"
+        echo -e "  • Tools:       kiosk_get_status, kiosk_set_url, kiosk_set_power,"
+        echo -e "                 kiosk_set_brightness, kiosk_set_rotation, kiosk_speed_mode,"
+        echo -e "                 kiosk_touch_control, kiosk_trigger_chime, kiosk_reboot"
+        ;;
+    esac
+    ;;
+
+  restart)
+    echo -e "${CYAN}[kioskos] Restarting Home Assistant Kiosk display...${NC}"
+    sudo systemctl restart kiosk-display
+    ;;
+
+  reboot)
+    echo -e "${CYAN}[kioskos] Rebooting Raspberry Pi appliance...${NC}"
+    sudo systemctl reboot
+    ;;
+
+  update)
+    echo -e "${CYAN}[kioskos] Launching System Update...${NC}"
+    if [ -n "$WAYLAND_DISPLAY" ] || [ -f /run/user/1000/wayland-0 ]; then
+        /opt/kiosk/apply-update.sh
+    else
+        sudo /opt/kiosk/kiosk-config.sh --update
+        sudo systemctl reboot
+    fi
+    ;;
+
+  backup)
+    echo -e "${CYAN}[kioskos] Generating sanitized appliance backup...${NC}"
+    BACKUP_FILE="/tmp/kiosk-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+    tar -czf "$BACKUP_FILE" -C /opt kiosk
+    echo -e "${GREEN}✓ Sanitized backup created at: $BACKUP_FILE${NC}"
+    ;;
+
   *)
     show_banner
     echo -e "${BOLD}Usage:${NC} kioskos <command> [options]\n"
     echo -e "Commands:"
-    echo -e "  ${GREEN}setup${NC}         Interactive setup wizard for Home Assistant Kiosk"
-    echo -e "  ${GREEN}status${NC}        Show current Home Assistant Kiosk status & telemetry"
-    echo -e "  ${GREEN}url <URL>${NC}     Update Home Assistant dashboard URL and reload"
-    echo -e "  ${GREEN}chime [name]${NC}  Play audio chime (bing, boot, alert, unlock, lock, touch)"
-    echo -e "  ${GREEN}touch${NC}         Optical Camera Touchscreen (test, calibrate, dynamic, mode)"
-    echo -e "  ${GREEN}kinect${NC}        Xbox Kinect hardware control (tilt, realign, led)"
-    echo -e "  ${GREEN}mcp${NC}           Model Context Protocol (MCP) server for AI assistants"
-    echo -e "  ${GREEN}restart${NC}       Restart the kiosk display engine"
-    echo -e "  ${GREEN}reboot${NC}        Reboot the Raspberry Pi appliance"
-    echo -e "  ${GREEN}update${NC}        Install latest appliance update and reload"
+    echo -e "  ${GREEN}settings${NC} / ${GREEN}config${NC} Show all appliance settings, descriptions & values"
+    echo -e "  ${GREEN}set <key> <val>${NC}  Modify any setting (url, brightness, rotation, touch, etc.)"
+    echo -e "  ${GREEN}get <key>${NC}        Get value of any setting"
+    echo -e "  ${GREEN}setup${NC}            Interactive setup wizard for Home Assistant Kiosk"
+    echo -e "  ${GREEN}status${NC}           Show current Home Assistant Kiosk status & telemetry"
+    echo -e "  ${GREEN}url <URL>${NC}        Quickly update Home Assistant dashboard URL and reload"
+    echo -e "  ${GREEN}screen [on|off]${NC}  Turn display power ON or OFF"
+    echo -e "  ${GREEN}brightness <10-100>${NC} Adjust backlight brightness level"
+    echo -e "  ${GREEN}rotate <angle>${NC}   Set display orientation (normal, 90, 180, 270)"
+    echo -e "  ${GREEN}chime [name]${NC}     Play audio chime (bing, boot, alert, unlock, lock, touch)"
+    echo -e "  ${GREEN}touch${NC}            Optical Camera Touchscreen (test, calibrate, dynamic, mode)"
+    echo -e "  ${GREEN}kinect${NC}           Xbox Kinect hardware control (tilt, realign, led)"
+    echo -e "  ${GREEN}mcp${NC}              Model Context Protocol (MCP) server for AI assistants"
+    echo -e "  ${GREEN}restart${NC}          Restart the kiosk display engine"
+    echo -e "  ${GREEN}reboot${NC}           Reboot the Raspberry Pi appliance"
+    echo -e "  ${GREEN}update${NC}           Install latest appliance update and reload"
     echo ""
     ;;
 esac
