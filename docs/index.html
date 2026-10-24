@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KioskOS — The Modern Linux Smart Display & Admin Workstation</title>
-  <meta name="description" content="Universal Linux Kiosk Operating System with macOS-style Admin Workstation, deep Home Assistant integration, camera motion sensor, and enterprise security.">
+  <title>KioskOS — Universal Linux Kiosk & macOS Admin Workstation</title>
+  <meta name="description" content="Turn any Raspberry Pi, x86_64 PC, or Linux machine into a resilient, touch-friendly smart display with macOS Admin Desktop, camera motion sensing, and Home Assistant MQTT integration.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
   <style>
     :root {
       --bg: #030712;
       --card-bg: rgba(17, 24, 39, 0.75);
-      --card-border: rgba(255, 255, 255, 0.1);
+      --card-border: rgba(255, 255, 255, 0.12);
       --accent: #38bdf8;
       --accent-glow: rgba(56, 189, 248, 0.35);
       --accent-purple: #818cf8;
@@ -33,16 +33,27 @@
       color: var(--text);
       overflow-x: hidden;
       line-height: 1.6;
-      background-image: 
-        radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.12) 0%, transparent 40%),
-        radial-gradient(circle at 85% 60%, rgba(129, 140, 248, 0.1) 0%, transparent 40%);
+      position: relative;
     }
 
-    /* Container */
+    /* Ambient Particle Canvas */
+    #ambient-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
     .container {
-      max-width: 1180px;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 0 24px;
+      position: relative;
+      z-index: 10;
     }
 
     /* Navigation */
@@ -55,7 +66,7 @@
       position: sticky;
       top: 0;
       background: rgba(3, 7, 18, 0.85);
-      backdrop-filter: blur(20px);
+      backdrop-filter: blur(24px);
       z-index: 1000;
     }
 
@@ -71,15 +82,15 @@
     }
 
     .brand-icon {
-      width: 38px;
-      height: 38px;
+      width: 40px;
+      height: 40px;
       background: linear-gradient(135deg, #0284c7, #2563eb);
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
-      box-shadow: 0 4px 14px var(--accent-glow);
+      font-size: 22px;
+      box-shadow: 0 4px 16px var(--accent-glow);
     }
 
     .nav-links {
@@ -103,7 +114,7 @@
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.15);
       color: #fff;
-      padding: 8px 16px;
+      padding: 8px 18px;
       border-radius: 20px;
       font-size: 13px;
       font-weight: 600;
@@ -114,7 +125,7 @@
       transition: all 0.2s;
     }
     .btn-github:hover {
-      background: rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.18);
       transform: translateY(-1px);
     }
 
@@ -123,18 +134,24 @@
       background: var(--warning-bg);
       border: 1px solid var(--warning-border);
       border-radius: 14px;
-      padding: 16px 20px;
+      padding: 16px 22px;
       margin-top: 32px;
       display: flex;
       align-items: flex-start;
-      gap: 14px;
+      gap: 16px;
       color: #fef3c7;
+      animation: pulseGlow 4s ease-in-out infinite alternate;
+    }
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 0 rgba(245, 158, 11, 0); }
+      100% { box-shadow: 0 0 25px rgba(245, 158, 11, 0.25); }
     }
     .beta-banner strong {
       color: var(--warning);
       display: block;
       margin-bottom: 2px;
       font-size: 14px;
+      font-weight: 700;
     }
     .beta-banner p {
       font-size: 13px;
@@ -144,7 +161,7 @@
 
     /* Hero Section */
     .hero {
-      padding: 60px 0 80px 0;
+      padding: 60px 0 50px 0;
       text-align: center;
     }
 
@@ -152,20 +169,21 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 14px;
+      padding: 6px 16px;
       background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      border: 1px solid rgba(56, 189, 248, 0.35);
       border-radius: 30px;
       font-size: 13px;
       font-weight: 600;
       color: var(--accent);
       margin-bottom: 24px;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
     }
 
     .hero h1 {
-      font-size: 52px;
+      font-size: 56px;
       font-weight: 800;
-      letter-spacing: -1.5px;
+      letter-spacing: -1.8px;
       line-height: 1.15;
       margin-bottom: 20px;
       background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
@@ -174,9 +192,9 @@
     }
 
     .hero p.lead {
-      font-size: 19px;
+      font-size: 20px;
       color: var(--text-muted);
-      max-width: 760px;
+      max-width: 800px;
       margin: 0 auto 36px auto;
       line-height: 1.6;
     }
@@ -185,7 +203,7 @@
       display: flex;
       justify-content: center;
       gap: 16px;
-      margin-bottom: 48px;
+      margin-bottom: 40px;
       flex-wrap: wrap;
     }
 
@@ -194,7 +212,7 @@
       color: #fff;
       font-size: 15px;
       font-weight: 600;
-      padding: 14px 28px;
+      padding: 14px 30px;
       border-radius: 12px;
       text-decoration: none;
       box-shadow: 0 10px 30px var(--accent-glow);
@@ -203,13 +221,214 @@
     }
     .btn-cta:hover {
       transform: translateY(-2px);
-      box-shadow: 0 14px 35px rgba(2, 132, 199, 0.5);
+      box-shadow: 0 14px 40px rgba(2, 132, 199, 0.6);
     }
 
-    /* Terminal Preview Box */
+    /* ==========================================================================
+       INTERACTIVE LIVE DESKTOP SIMULATOR
+       ========================================================================== */
+    .simulator-container {
+      background: #0b0f19;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 20px;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 60px rgba(56, 189, 248, 0.15);
+      overflow: hidden;
+      margin: 40px auto 60px auto;
+      max-width: 1040px;
+    }
+
+    .simulator-header {
+      background: rgba(22, 27, 34, 0.95);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .sim-mode-toggle {
+      display: flex;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      gap: 4px;
+    }
+
+    .sim-mode-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .sim-mode-btn.active {
+      background: #2563eb;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+    }
+
+    .sim-viewport {
+      height: 520px;
+      position: relative;
+      background: radial-gradient(circle at 50% 30%, #1e1b4b 0%, #0f172a 60%, #030712 100%);
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* Simulated macOS Menu Bar */
+    .sim-menubar {
+      height: 28px;
+      background: rgba(22, 27, 34, 0.88);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #cbd5e1;
+      z-index: 100;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+    }
+
+    /* Simulated Window */
+    .sim-window {
+      position: absolute;
+      background: rgba(24, 32, 47, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      cursor: grab;
+      transition: box-shadow 0.2s;
+      z-index: 10;
+    }
+    .sim-window:active {
+      cursor: grabbing;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9);
+    }
+
+    .sim-titlebar {
+      height: 34px;
+      background: rgba(15, 23, 42, 0.85);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      position: relative;
+    }
+
+    .sim-traffic-lights {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      z-index: 2;
+    }
+    .sim-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .sim-dot.red { background: #ff5f56; border: 1px solid #e0443e; }
+    .sim-dot.yellow { background: #ffbd2e; border: 1px solid #dea123; }
+    .sim-dot.green { background: #27c93f; border: 1px solid #1aab29; }
+
+    .sim-wintitle {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      font-weight: 600;
+      color: #e2e8f0;
+      pointer-events: none;
+    }
+
+    .sim-winbody {
+      padding: 16px;
+      font-size: 13px;
+      color: #cbd5e1;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* Simulated Dock */
+    .sim-dock {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 41, 59, 0.65);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 22px;
+      padding: 6px 12px;
+      display: flex;
+      gap: 10px;
+      z-index: 100;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .sim-dock-item {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .sim-dock-item:hover {
+      transform: scale(1.22) translateY(-8px);
+    }
+    .sim-dock-item svg {
+      width: 38px;
+      height: 38px;
+    }
+
+    /* Fullscreen Kiosk Simulation Overlay */
+    .sim-kiosk-view {
+      position: absolute;
+      inset: 0;
+      background: #0f172a;
+      display: none;
+      flex-direction: column;
+      z-index: 50;
+      padding: 24px;
+    }
+
+    .kiosk-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .kiosk-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 16px;
+      text-align: left;
+    }
+
+    /* Terminal Box */
     .terminal-box {
-      max-width: 680px;
-      margin: 0 auto;
+      max-width: 720px;
+      margin: 0 auto 50px auto;
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 16px;
@@ -250,9 +469,10 @@
       background: rgba(255, 255, 255, 0.1);
       border: none;
       color: #cbd5e1;
-      padding: 6px 12px;
+      padding: 6px 14px;
       border-radius: 8px;
       font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
       transition: background 0.2s;
     }
@@ -264,12 +484,12 @@
     /* Features Grid */
     .section-title {
       text-align: center;
-      margin: 80px 0 40px 0;
+      margin: 70px 0 40px 0;
     }
     .section-title h2 {
-      font-size: 34px;
-      font-weight: 700;
-      letter-spacing: -0.8px;
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -1px;
       margin-bottom: 12px;
     }
     .section-title p {
@@ -349,10 +569,8 @@
       font-size: 12px;
       color: #38bdf8;
       font-weight: 600;
-      font-family: inherit;
     }
 
-    /* Footer */
     footer {
       border-top: 1px solid rgba(255, 255, 255, 0.08);
       padding: 40px 0;
@@ -371,6 +589,9 @@
 </head>
 <body>
 
+  <!-- Ambient Dynamic Starfield Canvas -->
+  <canvas id="ambient-canvas"></canvas>
+
   <!-- Navbar -->
   <header class="navbar">
     <div class="container" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
@@ -379,6 +600,7 @@
         <span>KioskOS</span>
       </a>
       <nav class="nav-links">
+        <a href="#simulator">Live Demo</a>
         <a href="#features">Features</a>
         <a href="#shortcuts">Shortcuts</a>
         <a href="#install">Install</a>
@@ -392,10 +614,10 @@
   <main class="container">
     <!-- Active Beta Notice -->
     <div class="beta-banner">
-      <div style="font-size:24px;">⚠️</div>
+      <div style="font-size:26px;">⚠️</div>
       <div>
         <strong>ACTIVE BETA DEVELOPMENT (UNSTABLE)</strong>
-        <p>KioskOS is currently in early beta. Architecture and APIs are evolving rapidly and may be subject to bugs or breaking updates. Intended for development, hobbyists, and early adopters testing dedicated kiosk displays.</p>
+        <p>KioskOS is currently in early beta. Architecture and APIs are evolving rapidly and may be subject to bugs or breaking updates. Intended for development, testing, and smart home enthusiasts seeking a dedicated touchscreen interface.</p>
       </div>
     </div>
 
@@ -406,13 +628,13 @@
       </div>
       <h1>The Modern Linux Smart Display & Admin Workstation</h1>
       <p class="lead">
-        Turn any Raspberry Pi, Intel/AMD mini-PC, or Linux machine into a resilient, touch-optimized kiosk display. Featuring a macOS-inspired windowed Admin Desktop, camera motion sensor, automated night mode, and enterprise security.
+        Turn any Raspberry Pi, Intel/AMD mini-PC, or Linux terminal into a resilient, touch-friendly smart display. Switch seamlessly between locked single-app kiosk mode and a macOS-inspired windowed Admin Desktop.
       </p>
 
       <div class="hero-actions">
         <a href="#install" class="btn-cta">Install Now with 1 Command</a>
-        <a href="https://github.com/qwer8qaz8/rpi-kiosk-os" target="_blank" class="btn-github" style="padding:14px 24px; font-size:15px; border-radius:12px;">
-          View Repository on GitHub
+        <a href="#simulator" class="btn-github" style="padding:14px 26px; font-size:15px; border-radius:12px;">
+          Try Interactive Simulator ↓
         </a>
       </div>
 
@@ -427,6 +649,193 @@
         <div class="terminal-body">
           <code id="installCmd">curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.sh | bash</code>
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('installCmd').textContent); this.textContent='✓ Copied!'; setTimeout(()=>this.textContent='Copy', 2000);">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Live Simulator Section -->
+    <section id="simulator">
+      <div class="section-title">
+        <h2>Interactive Live Desktop Simulator</h2>
+        <p>Try the dual-mode experience directly in your browser. Click the dock icons, drag windows, or toggle modes!</p>
+      </div>
+
+      <div class="simulator-container">
+        <div class="simulator-header">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="term-dot red"></div>
+            <div class="term-dot yellow"></div>
+            <div class="term-dot green"></div>
+            <span style="font-size:13px; font-weight:600; color:#fff; margin-left:8px;">KioskOS Display Engine</span>
+          </div>
+
+          <!-- Dual Mode Switcher -->
+          <div class="sim-mode-toggle">
+            <button class="sim-mode-btn" id="btnModeKiosk" onclick="setSimMode('kiosk')">🔒 Locked Kiosk Mode</button>
+            <button class="sim-mode-btn active" id="btnModeAdmin" onclick="setSimMode('admin')">🖥️ macOS Admin Workstation</button>
+          </div>
+        </div>
+
+        <div class="sim-viewport" id="simViewport">
+          <!-- macOS Top Menu Bar -->
+          <div class="sim-menubar" id="simMenuBar">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:14px; cursor:pointer;"></span>
+              <strong style="color:#fff;">KioskOS</strong>
+              <span style="cursor:pointer;" onclick="toggleSimWin('simWinChrome')">Chrome</span>
+              <span style="cursor:pointer;" onclick="toggleSimWin('simWinSettings')">Preferences</span>
+              <span style="cursor:pointer;" onclick="toggleSimWin('simWinMotion')">Motion Sensor</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span>IP: 192.168.1.100</span>
+              <span id="simClock">12:00 PM</span>
+              <button style="background:#dc2626; color:#fff; border:none; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold; cursor:pointer;" onclick="setSimMode('kiosk')">🔒 Lock</button>
+            </div>
+          </div>
+
+          <!-- Window 1: Chrome App Window -->
+          <div class="sim-window" id="simWinChrome" style="top: 45px; left: 360px; width: 440px; height: 320px;">
+            <div class="sim-titlebar" onmousedown="dragSimWin(event, 'simWinChrome')">
+              <div class="sim-traffic-lights">
+                <div class="sim-dot red" onclick="toggleSimWin('simWinChrome')"></div>
+                <div class="sim-dot yellow" onclick="toggleSimWin('simWinChrome')"></div>
+                <div class="sim-dot green" onclick="maximizeSimWin('simWinChrome')"></div>
+              </div>
+              <div class="sim-wintitle">🌐 Google Chrome</div>
+            </div>
+            <div style="background:#1e293b; padding:6px 10px; display:flex; gap:6px; align-items:center; border-bottom:1px solid #334155;">
+              <span style="font-size:11px; color:#10b981;">🔒</span>
+              <input type="text" value="http://homeassistant.local:8123" style="flex:1; background:#0f172a; border:1px solid #334155; color:#fff; font-size:11px; padding:3px 8px; border-radius:12px; outline:none;" readonly />
+            </div>
+            <div class="sim-winbody" style="background:#090d16; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+              <div style="font-size:32px; margin-bottom:8px;">🏠</div>
+              <div style="font-weight:600; color:#fff;">Home Assistant Dashboard</div>
+              <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Living Room • 72°F • All Lights Normal</div>
+            </div>
+          </div>
+
+          <!-- Window 2: System Preferences Window -->
+          <div class="sim-window" id="simWinSettings" style="top: 45px; left: 40px; width: 300px; height: 320px;">
+            <div class="sim-titlebar" onmousedown="dragSimWin(event, 'simWinSettings')">
+              <div class="sim-traffic-lights">
+                <div class="sim-dot red" onclick="toggleSimWin('simWinSettings')"></div>
+                <div class="sim-dot yellow" onclick="toggleSimWin('simWinSettings')"></div>
+                <div class="sim-dot green" onclick="maximizeSimWin('simWinSettings')"></div>
+              </div>
+              <div class="sim-wintitle">⚙️ System Preferences</div>
+            </div>
+            <div class="sim-winbody">
+              <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">Kiosk Display Mode</div>
+              <div style="background:#0f172a; padding:6px 10px; border-radius:6px; border:1px solid #334155; font-size:11px; color:#38bdf8; margin-bottom:12px;">
+                ✓ Single App Kiosk (Home Assistant)
+              </div>
+              <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">Automated Night Mode</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:8px 10px; border-radius:6px; border:1px solid #334155; margin-bottom:12px;">
+                <span style="font-size:11px; color:#fff;">Sleep 23:00 &bull; Wake 07:00</span>
+                <span style="color:#10b981; font-weight:bold; font-size:11px;">ON</span>
+              </div>
+              <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">Display Brightness</div>
+              <input type="range" style="width:100%; accent-color:#38bdf8;" value="100" />
+            </div>
+          </div>
+
+          <!-- Window 3: Camera Motion Sensor -->
+          <div class="sim-window" id="simWinMotion" style="top: 80px; left: 200px; width: 360px; height: 280px; display:none;">
+            <div class="sim-titlebar" onmousedown="dragSimWin(event, 'simWinMotion')">
+              <div class="sim-traffic-lights">
+                <div class="sim-dot red" onclick="toggleSimWin('simWinMotion')"></div>
+                <div class="sim-dot yellow" onclick="toggleSimWin('simWinMotion')"></div>
+                <div class="sim-dot green" onclick="maximizeSimWin('simWinMotion')"></div>
+              </div>
+              <div class="sim-wintitle">📷 Motion Sensor</div>
+            </div>
+            <div class="sim-winbody" style="text-align:center;">
+              <div style="display:inline-block; padding:3px 12px; border-radius:12px; font-size:11px; font-weight:bold; background:rgba(16,185,129,0.2); color:#34d399; margin-bottom:12px; border:1px solid #10b981;">
+                ● Motion Detection Active
+              </div>
+              <div style="background:#000; height:130px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:12px; border:1px solid #334155;">
+                [Live Sensor Feed Simulation]
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom macOS Floating Dock -->
+          <div class="sim-dock" id="simDock">
+            <!-- Chrome -->
+            <div class="sim-dock-item" onclick="toggleSimWin('simWinChrome')" title="Google Chrome">
+              <svg viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="22" fill="#ffffff"/>
+                <path d="M24 6c5.2 0 9.9 2.2 13.2 5.7L25.8 23.9h-1.8L12.4 11.7C15.8 8.1 20.3 6 24 6z" fill="#ea4335"/>
+                <path d="M42 24c0 6.6-3.6 12.3-9 15.3l-11.4-19.8 1.8-.9 17.5 1.5C41.6 21.4 42 22.7 42 24z" fill="#fbbc05"/>
+                <path d="M6.3 22.1L17.7 2.3c-6.8 3.5-11.4 10.6-11.4 18.7 0 2.2.3 4.3 1 6.3l12.5-9.8-1.8-.9-3.7 5.5z" fill="#34a853"/>
+                <circle cx="24" cy="24" r="9.5" fill="#ffffff"/>
+                <circle cx="24" cy="24" r="7.5" fill="#4285f4"/>
+              </svg>
+            </div>
+            <!-- Settings -->
+            <div class="sim-dock-item" onclick="toggleSimWin('simWinSettings')" title="System Preferences">
+              <svg viewBox="0 0 48 48">
+                <rect width="48" height="48" rx="12" fill="#334155"/>
+                <path d="M24 16a8 8 0 100 16 8 8 0 000-16z" fill="#94a3b8"/>
+                <path d="M26 8h-4l-.8 3.2a13 13 0 00-3.3 1.4L15 10.8l-2.8 2.8 1.8 2.9a13 13 0 00-1.4 3.3L9.4 21v4l3.2.8a13 13 0 001.4 3.3l-1.8 2.9 2.8 2.8 2.9-1.8a13 13 0 003.3 1.4l.8 3.2h4l.8-3.2a13 13 0 003.3-1.4l2.9 1.8 2.8-2.8-1.8-2.9a13 13 0 001.4-3.3l3.2-.8v-4l-3.2-.8a13 13 0 00-1.4-3.3l1.8-2.9-2.8-2.8-2.9 1.8a13 13 0 00-3.3-1.4L26 8z" fill="#e2e8f0"/>
+              </svg>
+            </div>
+            <!-- Motion Sensor -->
+            <div class="sim-dock-item" onclick="toggleSimWin('simWinMotion')" title="Motion Sensor">
+              <svg viewBox="0 0 48 48">
+                <rect width="48" height="48" rx="12" fill="#0f766e"/>
+                <circle cx="24" cy="24" r="14" fill="#134e4a" stroke="#2dd4bf" stroke-width="2"/>
+                <circle cx="24" cy="24" r="7" fill="#042f2e"/>
+                <circle cx="22" cy="22" r="3" fill="#5eead4"/>
+              </svg>
+            </div>
+            <!-- Lock -->
+            <div class="sim-dock-item" onclick="setSimMode('kiosk')" title="Lock to Kiosk Mode">
+              <svg viewBox="0 0 48 48">
+                <rect width="48" height="48" rx="12" fill="#dc2626"/>
+                <path d="M19 19v-4a5 5 0 0110 0v4" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+                <rect x="16" y="19" width="16" height="15" rx="3" fill="#ffffff"/>
+                <circle cx="24" cy="26" r="2" fill="#dc2626"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Fullscreen Kiosk Mode View Overlay -->
+          <div class="sim-kiosk-view" id="simKioskOverlay">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:14px;">
+              <div>
+                <h3 style="color:#fff; font-size:18px;">Home Assistant Lovelace</h3>
+                <div style="font-size:12px; color:#94a3b8;">Locked Fullscreen Single-App Kiosk Display</div>
+              </div>
+              <button class="sim-mode-btn" style="background:#2563eb; color:#fff;" onclick="simulateUnlockPrompt()">
+                Simulate Ctrl+Alt+= &rarr; Type "Kiosk"
+              </button>
+            </div>
+
+            <div class="kiosk-grid">
+              <div class="kiosk-card">
+                <div style="font-size:12px; color:#94a3b8;">Living Room</div>
+                <div style="font-size:22px; font-weight:bold; color:#fff; margin:6px 0;">71.5°F</div>
+                <div style="font-size:11px; color:#10b981;">● HVAC Idle &bull; Humidity 45%</div>
+              </div>
+              <div class="kiosk-card">
+                <div style="font-size:12px; color:#94a3b8;">Energy Monitoring</div>
+                <div style="font-size:22px; font-weight:bold; color:#38bdf8; margin:6px 0;">1.4 kW</div>
+                <div style="font-size:11px; color:#38bdf8;">Solar Production: 3.2 kW</div>
+              </div>
+              <div class="kiosk-card">
+                <div style="font-size:12px; color:#94a3b8;">Security Status</div>
+                <div style="font-size:22px; font-weight:bold; color:#10b981; margin:6px 0;">Armed Home</div>
+                <div style="font-size:11px; color:#94a3b8;">All Doors & Windows Closed</div>
+              </div>
+            </div>
+
+            <!-- Listening Badge Simulation inside Kiosk View -->
+            <div id="simListeningBadge" style="position:absolute; top:20px; right:20px; background:rgba(15,23,42,0.95); border:1px solid #38bdf8; color:#38bdf8; padding:8px 16px; border-radius:20px; font-size:12px; font-weight:600; display:none; align-items:center; gap:8px;">
+              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#38bdf8;"></span>
+              <span>● Listening: Type "Kiosk"...</span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -529,7 +938,6 @@
         </table>
       </div>
     </section>
-
   </main>
 
   <footer>
@@ -543,5 +951,133 @@
     </div>
   </footer>
 
+  <script>
+    // Live Dynamic Starfield Background Canvas
+    const canvas = document.getElementById('ambient-canvas');
+    const ctx = canvas.getContext('2d');
+    let width = canvas.width = window.innerWidth;
+    let height = canvas.height = window.innerHeight;
+
+    window.addEventListener('resize', () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    });
+
+    const particles = [];
+    for (let i = 0; i < 70; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        radius: Math.random() * 1.5 + 0.5,
+        speedX: (Math.random() - 0.5) * 0.3,
+        speedY: (Math.random() - 0.5) * 0.3,
+        alpha: Math.random() * 0.7 + 0.2
+      });
+    }
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#38bdf8';
+      particles.forEach(p => {
+        p.x += p.speedX;
+        p.y += p.speedY;
+        if (p.x < 0) p.x = width;
+        if (p.x > width) p.x = 0;
+        if (p.y < 0) p.y = height;
+        if (p.y > height) p.y = 0;
+        ctx.globalAlpha = p.alpha;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      requestAnimationFrame(animateParticles);
+    }
+    animateParticles();
+
+    // Live Simulator Functions
+    function updateSimClock() {
+      const now = new Date();
+      document.getElementById('simClock').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    setInterval(updateSimClock, 1000);
+    updateSimClock();
+
+    function setSimMode(mode) {
+      const isKiosk = mode === 'kiosk';
+      document.getElementById('simKioskOverlay').style.display = isKiosk ? 'flex' : 'none';
+      document.getElementById('btnModeKiosk').classList.toggle('active', isKiosk);
+      document.getElementById('btnModeAdmin').classList.toggle('active', !isKiosk);
+    }
+
+    function toggleSimWin(winId) {
+      const el = document.getElementById(winId);
+      if (el) {
+        el.style.display = (el.style.display === 'none') ? 'flex' : 'none';
+        bringToFrontSim(winId);
+      }
+    }
+
+    let topZ = 20;
+    function bringToFrontSim(winId) {
+      topZ += 2;
+      const el = document.getElementById(winId);
+      if (el) el.style.zIndex = topZ;
+    }
+
+    function maximizeSimWin(winId) {
+      const el = document.getElementById(winId);
+      if (el.dataset.maxed === 'true') {
+        el.style.width = '440px';
+        el.style.height = '320px';
+        el.style.top = '45px';
+        el.style.left = '360px';
+        el.dataset.maxed = 'false';
+      } else {
+        el.style.top = '28px';
+        el.style.left = '0';
+        el.style.width = '100%';
+        el.style.height = 'calc(100% - 68px)';
+        el.dataset.maxed = 'true';
+      }
+      bringToFrontSim(winId);
+    }
+
+    function dragSimWin(e, winId) {
+      const win = document.getElementById(winId);
+      bringToFrontSim(winId);
+      const shiftX = e.clientX - win.getBoundingClientRect().left;
+      const shiftY = e.clientY - win.getBoundingClientRect().top;
+      const parent = document.getElementById('simViewport').getBoundingClientRect();
+
+      function onMouseMove(event) {
+        let newX = event.clientX - parent.left - shiftX;
+        let newY = event.clientY - parent.top - shiftY;
+        if (newY < 28) newY = 28;
+        win.style.left = newX + 'px';
+        win.style.top = newY + 'px';
+      }
+
+      function onMouseUp() {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      }
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
+
+    function simulateUnlockPrompt() {
+      const badge = document.getElementById('simListeningBadge');
+      badge.style.display = 'flex';
+      badge.innerHTML = '<span>● Listening...</span>';
+      setTimeout(() => {
+        badge.innerHTML = '<span>● Typed: "Kiosk" ✓</span>';
+        setTimeout(() => {
+          badge.style.display = 'none';
+          alert('Authentication Success!\nTransitioning smoothly to macOS Admin Workstation without restarting compositor.');
+          setSimMode('admin');
+        }, 1000);
+      }, 1200);
+    }
+  </script>
 </body>
 </html>
