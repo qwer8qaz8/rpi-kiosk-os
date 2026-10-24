@@ -9,9 +9,5 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 if [ -f "/tmp/kiosk-admin-workstation" ]; then
     /opt/kiosk/prompt-exit.sh
 else
-    if [ -f "/opt/kiosk/kiosk-native-auth.py" ]; then
-        python3 /opt/kiosk/kiosk-native-auth.py &
-    else
-        curl -s -X POST http://127.0.0.1:8080/api/admin/trigger_listener >/dev/null 2>&1 || true
-    fi
+    curl -s -X POST http://127.0.0.1:8080/api/admin/trigger_listener >/dev/null 2>&1 || true
 fi

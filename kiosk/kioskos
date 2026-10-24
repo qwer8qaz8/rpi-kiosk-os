@@ -100,6 +100,13 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     sudo systemctl reboot
     ;;
 
+  maintenance)
+    action="${2:-toggle}"
+    echo -e "${CYAN}[kioskos] Maintenance Mode action: $action${NC}"
+    curl -s -X POST -H "Content-Type: application/json" -d "{\"action\": \"$action\"}" http://127.0.0.1:8080/api/maintenance
+    echo ""
+    ;;
+
   backup)
     echo -e "${CYAN}[kioskos] Creating Clean System Backup (secrets stripped)...${NC}"
     /opt/kiosk/backup-kiosk.sh
@@ -112,6 +119,7 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     echo -e "  ${GREEN}status${NC}        Show current KioskOS status, dashboard URL, and services"
     echo -e "  ${GREEN}url <URL>${NC}     Update Home Assistant / Kiosk dashboard URL and reload"
     echo -e "  ${GREEN}update${NC}        Check for updates, display native update screen & reboot"
+    echo -e "  ${GREEN}maintenance${NC}   Toggle or set Maintenance Mode (on/off/toggle)"
     echo -e "  ${GREEN}admin${NC}         Switch into Admin Desktop Mode (Chrome + Control Center)"
     echo -e "  ${GREEN}lock${NC}          Lock back into Fullscreen Single-App Kiosk Mode"
     echo -e "  ${GREEN}restart${NC}       Restart the kiosk display compositor"

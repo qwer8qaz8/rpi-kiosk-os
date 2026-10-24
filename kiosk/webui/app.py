@@ -88,6 +88,8 @@ PUBLIC_ENDPOINTS = {
     "api_camera_snapshot",
     "api_status",
     "api_admin_trigger_listener",
+    "api_admin_listener_status",
+    "api_maintenance",
     "api_admin_prompt_exit",
     "api_display_navigate",
     "static"
@@ -670,17 +672,47 @@ def api_admin_prompt_exit():
         logger.warning(f"Error triggering exit dialog: {e}")
     return jsonify({"success": True, "prompted": True})
 
+LISTENER_TRIGGER_TIME = 0
+
 @app.route("/api/admin/trigger_listener", methods=["POST", "OPTIONS"])
 def api_admin_trigger_listener():
+    global LISTENER_TRIGGER_TIME
     if request.method == "OPTIONS":
         return "", 200
-    try:
-        eval_script = "window.triggerSecretListener && window.triggerSecretListener();"
-        eval_url = f"http://127.0.0.1:9222/json/evaluate?expr={urllib.parse.quote(eval_script)}"
-        urllib.request.urlopen(eval_url, timeout=1)
-    except Exception as e:
-        logger.warning(f"Error triggering listener: {e}")
-    return jsonify({"success": True})
+    LISTENER_TRIGGER_TIME = time.time()
+    return jsonify({"success": True, "triggered_at": LISTENER_TRIGGER_TIME})
+
+@app.route("/api/admin/listener_status", methods=["GET", "OPTIONS"])
+def api_admin_listener_status():
+    if request.method == "OPTIONS":
+        return "", 200
+    is_active = (time.time() - LISTENER_TRIGGER_TIME) < 8.0
+    cfg = load_config()
+    return jsonify({
+        "listener_active": is_active,
+        "maintenance_mode": cfg.get("maintenance_mode", False),
+        "updating": UPDATE_STATE.get("in_progress", False) or UPDATE_STATE.get("updating", False),
+        "update_step": UPDATE_STATE.get("step", ""),
+        "status_text": UPDATE_STATE.get("status_text", "")
+    })
+
+@app.route("/api/maintenance", methods=["GET", "POST", "OPTIONS"])
+def api_maintenance():
+    if request.method == "OPTIONS":
+        return "", 200
+    cfg = load_config()
+    if request.method == "GET":
+        return jsonify({"success": True, "maintenance_mode": cfg.get("maintenance_mode", False)})
+    req = request.get_json(silent=True) or request.form
+    action = req.get("action", "toggle").lower()
+    if action == "on":
+        cfg["maintenance_mode"] = True
+    elif action == "off":
+        cfg["maintenance_mode"] = False
+    elif action == "toggle":
+        cfg["maintenance_mode"] = not cfg.get("maintenance_mode", False)
+    save_config(cfg)
+    return jsonify({"success": True, "maintenance_mode": cfg["maintenance_mode"]})
 
 @app.route("/api/screen/input_mode", methods=["GET", "POST", "OPTIONS"])
 def api_screen_input_mode():

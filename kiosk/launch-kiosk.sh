@@ -304,13 +304,9 @@ let secretListenMode = false;
 let secretBuffer = '';
 let secretListenTimer = null;
 let secretIndicatorEl = null;
+let currentKioskStatus = 'idle'; // 'idle', 'maintenance', 'updating'
 
-function showCornerIndicator(status = 'listening', extra = '') {
-    // Silent mode: do not display any text or hints on screen during listening
-    if (status === 'listening') {
-        if (secretIndicatorEl) secretIndicatorEl.style.display = 'none';
-        return;
-    }
+function ensureCornerIndicator() {
     if (!secretIndicatorEl) {
         secretIndicatorEl = document.createElement('div');
         secretIndicatorEl.id = 'rpi-kiosk-secret-indicator';
@@ -328,36 +324,104 @@ function showCornerIndicator(status = 'listening', extra = '') {
             align-items: center;
             gap: 8px;
             box-shadow: 0 4px 25px rgba(0,0,0,0.7);
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
             pointer-events: none;
             user-select: none;
         `;
         document.body.appendChild(secretIndicatorEl);
     }
+    return secretIndicatorEl;
+}
 
-    if (status === 'success') {
-        secretIndicatorEl.style.background = 'rgba(6, 78, 59, 0.96)';
-        secretIndicatorEl.style.border = '1px solid #34d399';
-        secretIndicatorEl.style.color = '#34d399';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Unlocking...</span>';
-        secretIndicatorEl.style.display = 'flex';
+function showCornerIndicator(status = 'listening', extra = '') {
+    const el = ensureCornerIndicator();
+
+    if (status === 'listening') {
+        el.style.background = 'rgba(15, 23, 42, 0.94)';
+        el.style.border = '1px solid rgba(56, 189, 248, 0.6)';
+        el.style.color = '#38bdf8';
+        el.style.boxShadow = '0 6px 25px rgba(0,0,0,0.8), 0 0 15px rgba(56, 189, 248, 0.3)';
+        const dots = extra ? `<span style="color:#ffffff; margin-left:6px; letter-spacing:2px;">${extra}</span>` : '';
+        el.innerHTML = `<span style="font-size:16px;">⌨️</span><span>Listening</span>${dots}`;
+        el.style.display = 'flex';
+    } else if (status === 'maintenance') {
+        el.style.background = 'rgba(120, 53, 15, 0.94)';
+        el.style.border = '1px solid #f59e0b';
+        el.style.color = '#fef3c7';
+        el.style.boxShadow = '0 6px 25px rgba(0,0,0,0.8), 0 0 15px rgba(245, 158, 11, 0.3)';
+        el.innerHTML = '<span style="font-size:15px;">🛠️</span><span>Maintenance Mode</span>';
+        el.style.display = 'flex';
+    } else if (status === 'updating') {
+        el.style.background = 'rgba(6, 78, 59, 0.94)';
+        el.style.border = '1px solid #10b981';
+        el.style.color = '#ecfdf5';
+        el.style.boxShadow = '0 6px 25px rgba(0,0,0,0.8), 0 0 15px rgba(16, 185, 129, 0.3)';
+        const step = extra ? `<span style="font-size:11px; opacity:0.8; margin-left:4px;">(${extra})</span>` : '';
+        el.innerHTML = `<span style="font-size:15px;">🔄</span><span>Update in Progress...</span>${step}`;
+        el.style.display = 'flex';
+    } else if (status === 'success') {
+        el.style.background = 'rgba(6, 78, 59, 0.96)';
+        el.style.border = '1px solid #34d399';
+        el.style.color = '#34d399';
+        el.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Opening Kiosk Admin...</span>';
+        el.style.display = 'flex';
     } else if (status === 'error') {
-        secretIndicatorEl.style.background = 'rgba(127, 29, 29, 0.96)';
-        secretIndicatorEl.style.border = '1px solid #f87171';
-        secretIndicatorEl.style.color = '#f87171';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Cancelled</span>';
-        secretIndicatorEl.style.display = 'flex';
+        el.style.background = 'rgba(127, 29, 29, 0.96)';
+        el.style.border = '1px solid #f87171';
+        el.style.color = '#f87171';
+        el.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Cancelled</span>';
+        el.style.display = 'flex';
     }
 }
 
 function hideCornerIndicator() {
-    if (secretIndicatorEl) {
-        secretIndicatorEl.style.display = 'none';
-    }
     secretListenMode = false;
     secretBuffer = '';
     if (secretListenTimer) clearTimeout(secretListenTimer);
+
+    if (currentKioskStatus === 'maintenance') {
+        showCornerIndicator('maintenance');
+    } else if (currentKioskStatus === 'updating') {
+        showCornerIndicator('updating');
+    } else if (secretIndicatorEl) {
+        secretIndicatorEl.style.display = 'none';
+    }
 }
+
+// Background sync loop for Maintenance Mode, Updates, and Remote Listener trigger
+setInterval(async () => {
+    try {
+        const res = await fetch('http://127.0.0.1:8080/api/admin/listener_status');
+        const data = await res.json();
+
+        // 1. Check remote trigger_listener signal
+        if (data.listener_active && !secretListenMode) {
+            secretListenMode = true;
+            secretBuffer = '';
+            showCornerIndicator('listening');
+            if (secretListenTimer) clearTimeout(secretListenTimer);
+            secretListenTimer = setTimeout(() => hideCornerIndicator(), 10000);
+        }
+
+        // 2. Sync background update or maintenance state
+        if (data.updating) {
+            currentKioskStatus = 'updating';
+            if (!secretListenMode) {
+                showCornerIndicator('updating', data.update_step || '');
+            }
+        } else if (data.maintenance_mode) {
+            currentKioskStatus = 'maintenance';
+            if (!secretListenMode) {
+                showCornerIndicator('maintenance');
+            }
+        } else {
+            currentKioskStatus = 'idle';
+            if (!secretListenMode && secretIndicatorEl && secretIndicatorEl.style.display !== 'none' && !secretIndicatorEl.innerHTML.includes('Cancelled')) {
+                secretIndicatorEl.style.display = 'none';
+            }
+        }
+    } catch(e) {}
+}, 1200);
 
 let passwordModalEl = null;
 
@@ -689,16 +753,36 @@ window.addEventListener('keydown', function(e) {
                 return false;
             }
 
-            // 2. Secret reboot command: 'reboot'
-            if (secretBuffer.toLowerCase().endsWith('reboot')) {
-                hideCornerIndicator();
-                if (confirm('Reboot kiosk display system now?')) {
-                    fetch('http://127.0.0.1:8080/api/reboot', { method: 'POST' });
-                }
+            // 2. Secret maintenance command: 'maintenance'
+            if (secretBuffer.toLowerCase().endsWith('maintenance')) {
+                fetch('http://127.0.0.1:8080/api/maintenance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'toggle' })
+                }).then(r => r.json()).then(d => {
+                    currentKioskStatus = d.maintenance_mode ? 'maintenance' : 'idle';
+                    hideCornerIndicator();
+                }).catch(() => hideCornerIndicator());
                 return false;
             }
 
-            // 3. Secret reload command: 'reload'
+            // 3. Secret update command: 'update'
+            if (secretBuffer.toLowerCase().endsWith('update')) {
+                currentKioskStatus = 'updating';
+                showCornerIndicator('updating');
+                fetch('http://127.0.0.1:8080/api/update', { method: 'POST' }).catch(() => {});
+                setTimeout(() => hideCornerIndicator(), 2000);
+                return false;
+            }
+
+            // 4. Secret reboot command: 'reboot'
+            if (secretBuffer.toLowerCase().endsWith('reboot')) {
+                hideCornerIndicator();
+                fetch('http://127.0.0.1:8080/api/reboot', { method: 'POST' });
+                return false;
+            }
+
+            // 5. Secret reload command: 'reload'
             if (secretBuffer.toLowerCase().endsWith('reload')) {
                 hideCornerIndicator();
                 fetch('http://127.0.0.1:8080/api/reload', { method: 'POST' });
