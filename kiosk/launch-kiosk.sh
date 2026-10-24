@@ -400,39 +400,41 @@ function hideCornerIndicator() {
 }
 
 // Background sync loop for Maintenance Mode, Updates, and Remote Listener trigger
-setInterval(async () => {
-    try {
-        const res = await fetch('http://127.0.0.1:8080/api/admin/listener_status');
-        const data = await res.json();
+if (window === window.top) {
+    setInterval(async () => {
+        try {
+            const res = await fetch('http://127.0.0.1:8080/api/admin/listener_status');
+            const data = await res.json();
 
-        // 1. Check remote trigger_listener signal
-        if (data.listener_active && !secretListenMode) {
-            secretListenMode = true;
-            secretBuffer = '';
-            showCornerIndicator('listening');
-            if (secretListenTimer) clearTimeout(secretListenTimer);
-            secretListenTimer = setTimeout(() => hideCornerIndicator(), 10000);
-        }
+            // 1. Check remote trigger_listener signal
+            if (data.listener_active && !secretListenMode) {
+                secretListenMode = true;
+                secretBuffer = '';
+                showCornerIndicator('listening');
+                if (secretListenTimer) clearTimeout(secretListenTimer);
+                secretListenTimer = setTimeout(() => hideCornerIndicator(), 10000);
+            }
 
-        // 2. Sync background update or maintenance state
-        if (data.updating) {
-            currentKioskStatus = 'updating';
-            if (!secretListenMode) {
-                showCornerIndicator('updating', data.update_step || '');
+            // 2. Sync background update or maintenance state
+            if (data.updating) {
+                currentKioskStatus = 'updating';
+                if (!secretListenMode) {
+                    showCornerIndicator('updating', data.update_step || '');
+                }
+            } else if (data.maintenance_mode) {
+                currentKioskStatus = 'maintenance';
+                if (!secretListenMode) {
+                    showCornerIndicator('maintenance');
+                }
+            } else {
+                currentKioskStatus = 'idle';
+                if (!secretListenMode && secretIndicatorEl && secretIndicatorEl.style.display !== 'none' && !secretIndicatorEl.innerHTML.includes('Cancelled')) {
+                    secretIndicatorEl.style.display = 'none';
+                }
             }
-        } else if (data.maintenance_mode) {
-            currentKioskStatus = 'maintenance';
-            if (!secretListenMode) {
-                showCornerIndicator('maintenance');
-            }
-        } else {
-            currentKioskStatus = 'idle';
-            if (!secretListenMode && secretIndicatorEl && secretIndicatorEl.style.display !== 'none' && !secretIndicatorEl.innerHTML.includes('Cancelled')) {
-                secretIndicatorEl.style.display = 'none';
-            }
-        }
-    } catch(e) {}
-}, 1200);
+        } catch(e) {}
+    }, 4000);
+}
 
 let passwordModalEl = null;
 
@@ -728,6 +730,9 @@ window.addEventListener('keydown', function(e) {
         e.stopPropagation();
         e.stopImmediatePropagation();
 
+        // Ensure native GTK3 auth dialog opens immediately
+        fetch('http://127.0.0.1:8080/api/admin/open_auth', { method: 'POST' }).catch(() => {});
+
         // Toggle Secret Listen Mode:
         if (secretListenMode) {
             hideCornerIndicator();
@@ -898,12 +903,7 @@ window.addEventListener('keypress', function(e) {
 
 window.addEventListener('keyup', function(e) {
     if (exitHoldStart) {
-        const heldDuration = Date.now() - exitHoldStart;
         hideExitHoldOverlay();
-        // If released before 2 seconds: user tapped/released early -> show countdown dialog!
-        if (heldDuration < 2000) {
-            showExitCountdownDialog();
-        }
     }
 
     if (secretListenMode) {
@@ -1845,13 +1845,16 @@ function purgeHomeAssistantSandwichMenu(root = document) {
     }
 }
 
-// Continuously purge sandwich menu across document & deep shadow roots every 350ms
+// Efficiently purge sandwich menu across document & deep shadow roots
 function startSandwichPurge() {
     purgeHomeAssistantSandwichMenu();
+    setTimeout(purgeHomeAssistantSandwichMenu, 500);
+    setTimeout(purgeHomeAssistantSandwichMenu, 1500);
+    setTimeout(purgeHomeAssistantSandwichMenu, 3000);
     if (!window.__kiosk_sandwich_purge_interval) {
         window.__kiosk_sandwich_purge_interval = setInterval(() => {
             purgeHomeAssistantSandwichMenu();
-        }, 350);
+        }, 4000);
     }
 }
 try {
@@ -1880,6 +1883,13 @@ sed -i "s|__DASHBOARD_URL__|$DASHBOARD_URL|g" "$EXT_DIR/content.js"
 
 EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR" "--remote-debugging-port=9222" "--remote-allow-origins=*")
 
+# Reap child processes cleanly
+trap 'wait -n 2>/dev/null || true' CHLD
+
+# Clean up any leftover duplicate chromium instances before supervisor begins
+killall -9 chromium chromium-browser 2>/dev/null || true
+sleep 0.5
+
 # Persistent session manager loop: keeps labwc compositor alive permanently
 while true; do
     if [ -f "/tmp/kiosk-admin-workstation" ]; then
@@ -1887,6 +1897,12 @@ while true; do
         sleep 1
     else
         # Fullscreen Kiosk Mode
+        # If an active kiosk chromium is already running, wait peacefully
+        if pgrep -u "$(id -u)" -f 'chromium.*--kiosk' >/dev/null 2>&1; then
+            sleep 2
+            continue
+        fi
+
         # Clean up any restored multi-tab sessions so Chromium strictly opens in single app mode
         rm -rf "$HOME/.config/chromium/Default/Sessions" 2>/dev/null || true
         rm -rf "$HOME/.config/chromium/Default/Current Session" 2>/dev/null || true
@@ -1906,7 +1922,7 @@ while true; do
         fi
 
         # Launch Chromium directly into Home Assistant Dashboard in Fullscreen Kiosk Mode
-        # (Executed without exec so this supervisor loop and labwc remain active)
+        echo "[kiosk] Launching Fullscreen Kiosk Chromium..."
         "$CHROMIUM_BIN" \
           "${EXTRA_CHROME_FLAGS[@]}" \
           --kiosk \
@@ -1932,8 +1948,11 @@ while true; do
           --password-store=basic \
           --disk-cache-dir=/tmp/chromium-cache \
           --enable-gpu-rasterization \
-          --enable-zero-copy || true
+          --enable-zero-copy &
+        CHROME_PID=$!
 
-        sleep 0.5
+        # Wait for Chromium to exit
+        wait "$CHROME_PID" 2>/dev/null || true
+        sleep 1
     fi
 done

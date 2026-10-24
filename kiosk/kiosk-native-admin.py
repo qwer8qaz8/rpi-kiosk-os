@@ -241,7 +241,65 @@ class NativeAdminWindow(Gtk.Window):
         card2.pack_start(row2, False, False, 0)
         content_box.pack_start(card2, False, False, 0)
 
-        # CARD 3: Maintenance & System Actions
+        # CARD 3: Optical Camera Touchscreen Engine
+        card_touch = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        card_touch.get_style_context().add_class("section-card")
+
+        ct_title = Gtk.Label()
+        ct_title.set_markup('<span class="section-title">Optical Camera Touchscreen</span>')
+        ct_title.set_halign(Gtk.Align.START)
+        card_touch.pack_start(ct_title, False, False, 0)
+
+        t_row1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
+
+        t_switch_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        t_switch_lbl = Gtk.Label(label="Camera Touchscreen:")
+        self.touch_switch = Gtk.Switch()
+        touch_cfg = self.config.get("camera_touch", {})
+        self.touch_switch.set_active(touch_cfg.get("enabled", False))
+        self.touch_switch.connect("state-set", self.on_touch_toggle)
+        t_switch_box.pack_start(t_switch_lbl, False, False, 0)
+        t_switch_box.pack_start(self.touch_switch, False, False, 0)
+        t_row1.pack_start(t_switch_box, False, False, 0)
+
+        t_mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        t_mode_lbl = Gtk.Label(label="Tracking Mode:")
+        self.touch_mode_combo = Gtk.ComboBoxText()
+        self.touch_mode_combo.append("single", "1 Camera (Single)")
+        self.touch_mode_combo.append("dual", "2 Cameras (Stereo Depth)")
+        self.touch_mode_combo.append("kinect", "Xbox Kinect (Infrared Depth)")
+        self.touch_mode_combo.set_active_id(touch_cfg.get("mode", "single"))
+        self.touch_mode_combo.connect("changed", self.on_touch_mode_change)
+        t_mode_box.pack_start(t_mode_lbl, False, False, 0)
+        t_mode_box.pack_start(self.touch_mode_combo, False, False, 0)
+        row1_dyn = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        dyn_lbl = Gtk.Label(label="Dynamic Camera (Mini-Markers):")
+        self.touch_dyn_switch = Gtk.Switch()
+        self.touch_dyn_switch.set_active(touch_cfg.get("dynamic_tracking", False))
+        self.touch_dyn_switch.connect("state-set", self.on_touch_dyn_toggle)
+        row1_dyn.pack_start(dyn_lbl, False, False, 0)
+        row1_dyn.pack_start(self.touch_dyn_switch, False, False, 0)
+
+        t_row1.pack_start(t_mode_box, False, False, 0)
+        t_row1.pack_start(row1_dyn, False, False, 0)
+
+        card_touch.pack_start(t_row1, False, False, 0)
+
+        # Action buttons
+        t_btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+
+        calib_btn = Gtk.Button(label="🎯 Calibrate Markers & Align Screen")
+        calib_btn.connect("clicked", self.on_calibrate_touch)
+        t_btn_box.pack_start(calib_btn, True, True, 0)
+
+        test_btn = Gtk.Button(label="📹 Live Test Camera Tracking")
+        test_btn.connect("clicked", self.on_test_camera)
+        t_btn_box.pack_start(test_btn, True, True, 0)
+
+        card_touch.pack_start(t_btn_box, False, False, 0)
+        content_box.pack_start(card_touch, False, False, 0)
+
+        # CARD 4: Maintenance & System Actions
         card3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         card3.get_style_context().add_class("section-card")
 
@@ -334,6 +392,40 @@ class NativeAdminWindow(Gtk.Window):
             chime_script = "/opt/kiosk/play-chime.sh"
             if os.path.exists(chime_script):
                 subprocess.Popen([chime_script])
+
+    def on_touch_toggle(self, switch, state):
+        if "camera_touch" not in self.config:
+            self.config["camera_touch"] = {}
+        self.config["camera_touch"]["enabled"] = state
+        save_config(self.config)
+        action = "start" if state else "stop"
+        subprocess.run(["sudo", "systemctl", action, "kiosk-camera-touch.service"], capture_output=True)
+
+    def on_touch_mode_change(self, combo):
+        active_id = combo.get_active_id()
+        if active_id:
+            if "camera_touch" not in self.config:
+                self.config["camera_touch"] = {}
+            self.config["camera_touch"]["mode"] = active_id
+            save_config(self.config)
+            subprocess.run(["sudo", "systemctl", "restart", "kiosk-camera-touch.service"], capture_output=True)
+
+    def on_touch_dyn_toggle(self, switch, state):
+        if "camera_touch" not in self.config:
+            self.config["camera_touch"] = {}
+        self.config["camera_touch"]["dynamic_tracking"] = state
+        save_config(self.config)
+        subprocess.run(["sudo", "systemctl", "restart", "kiosk-camera-touch.service"], capture_output=True)
+
+    def on_calibrate_touch(self, widget):
+        calib_script = "/opt/kiosk/camera-touch/touch_calibration.py"
+        if os.path.exists(calib_script):
+            subprocess.Popen(["python3", calib_script])
+
+    def on_test_camera(self, widget):
+        test_script = "/opt/kiosk/camera-touch/touch_test.py"
+        if os.path.exists(test_script):
+            subprocess.Popen(["python3", test_script])
 
     def on_run_update(self, widget):
         if os.path.exists("/opt/kiosk/kiosk-native-update.py"):

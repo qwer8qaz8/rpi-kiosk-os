@@ -163,6 +163,43 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     esac
     ;;
 
+  touch)
+    subcmd="${2:-status}"
+    case "$subcmd" in
+      test)
+        cam_id="${3:-0}"
+        echo -e "${CYAN}[kioskos] Launching Camera Touch Test (Camera $cam_id)...${NC}"
+        python3 /opt/kiosk/camera-touch/touch_test.py "$cam_id"
+        ;;
+      calibrate)
+        cam_id="${3:-0}"
+        echo -e "${CYAN}[kioskos] Launching Fullscreen Alignment & Marker Calibration (Camera $cam_id)...${NC}"
+        python3 /opt/kiosk/camera-touch/touch_calibration.py "$cam_id"
+        ;;
+      start|on)
+        echo -e "${GREEN}[kioskos] Starting Camera Touchscreen Service...${NC}"
+        sudo systemctl enable kiosk-camera-touch.service 2>/dev/null || true
+        sudo systemctl restart kiosk-camera-touch.service
+        ;;
+      stop|off)
+        echo -e "${YELLOW}[kioskos] Stopping Camera Touchscreen Service...${NC}"
+        sudo systemctl stop kiosk-camera-touch.service 2>/dev/null || true
+        sudo systemctl disable kiosk-camera-touch.service 2>/dev/null || true
+        ;;
+      status|*)
+        echo -e "${BOLD}Camera Touchscreen Status:${NC}"
+        echo -e "  • Service:      $(systemctl is-active kiosk-camera-touch.service 2>/dev/null || echo 'inactive')"
+        echo -e "  • Cameras:      $(ls /dev/video* 2>/dev/null | tr '\n' ' ' || echo 'None detected')"
+        echo -e "  • Calibration:  $([ -f /etc/kiosk/camera-touch-calibration.json ] && echo "${GREEN}Calibrated${NC}" || echo "${YELLOW}Uncalibrated (Run 'kioskos touch calibrate')${NC}")"
+        echo ""
+        echo -e "Subcommands:"
+        echo -e "  ${GREEN}kioskos touch test [cam]${NC}      Live camera test view & tracking"
+        echo -e "  ${GREEN}kioskos touch calibrate [cam]${NC} Fullscreen corner marker alignment"
+        echo -e "  ${GREEN}kioskos touch start|stop${NC}      Enable/disable background service"
+        ;;
+    esac
+    ;;
+
   *)
     show_banner
     echo -e "${BOLD}Usage:${NC} kioskos <command> [options]\n"
@@ -177,6 +214,7 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     echo -e "  ${GREEN}reboot${NC}        Reboot the Raspberry Pi system"
     echo -e "  ${GREEN}backup${NC}        Generate clean backup tarball without secrets"
     echo -e "  ${GREEN}chime [test|on|off]${NC} Test or toggle KioskOS startup chime"
+    echo -e "  ${GREEN}touch [test|calibrate|start|stop]${NC} Optical Camera Touchscreen tools"
     echo ""
     ;;
 esac

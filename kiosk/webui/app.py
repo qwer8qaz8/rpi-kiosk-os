@@ -682,6 +682,19 @@ def api_admin_trigger_listener():
     LISTENER_TRIGGER_TIME = time.time()
     return jsonify({"success": True, "triggered_at": LISTENER_TRIGGER_TIME})
 
+@app.route("/api/admin/open_auth", methods=["POST", "OPTIONS"])
+def api_admin_open_auth():
+    if request.method == "OPTIONS":
+        return "", 200
+    try:
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+        env["WAYLAND_DISPLAY"] = "wayland-0"
+        subprocess.Popen(["/usr/bin/python3", "/opt/kiosk/kiosk-native-auth.py"], env=env)
+    except Exception as e:
+        logger.warning(f"Error launching auth modal: {e}")
+    return jsonify({"success": True})
+
 @app.route("/api/admin/listener_status", methods=["GET", "OPTIONS"])
 def api_admin_listener_status():
     if request.method == "OPTIONS":

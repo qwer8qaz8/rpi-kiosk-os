@@ -1,0 +1,16 @@
+[Unit]
+Description=KioskOS Optical Camera Touchscreen Engine
+After=kiosk-display.service
+Wants=kiosk-display.service
+
+[Service]
+Type=simple
+User=root
+Group=input
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/kiosk/camera-touch/kiosk-camera-touch.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target

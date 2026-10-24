@@ -179,30 +179,13 @@ class NativeAuthDialog(Gtk.Window):
         Gtk.main_quit()
 
 def main():
-    # Only allow 1 instance of auth dialog
-    lock_file = "/tmp/kiosk-auth.lock"
-    if os.path.exists(lock_file):
-        try:
-            with open(lock_file) as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)
-            print("Auth dialog already running.")
-            sys.exit(0)
-        except Exception:
-            pass
-
-    with open(lock_file, "w") as f:
-        f.write(str(os.getpid()))
-
     try:
         win = NativeAuthDialog()
         win.show_all()
         win.entry.grab_focus()
         Gtk.main()
-    finally:
-        if os.path.exists(lock_file):
-            try: os.unlink(lock_file)
-            except Exception: pass
+    except Exception as e:
+        print(f"Error starting auth dialog: {e}")
 
 if __name__ == "__main__":
     main()

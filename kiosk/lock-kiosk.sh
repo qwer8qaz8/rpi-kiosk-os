@@ -19,8 +19,8 @@ pkill -9 -f waybar 2>/dev/null || true
 pkill -9 -f swaybg 2>/dev/null || true
 pkill -9 -f foot 2>/dev/null || true
 pkill -9 -f kiosk-native-admin.py 2>/dev/null || true
-pkill -9 -f '/tmp/chromium-kiosk-browser' 2>/dev/null || true
-sleep 0.5
+killall -9 chromium chromium-browser 2>/dev/null || pkill -9 -f chromium 2>/dev/null || true
+sleep 0.8
 
 # Re-launch single-app fullscreen kiosk if not already supervised
 pgrep -f "launch-kiosk.sh" >/dev/null || nohup /opt/kiosk/launch-kiosk.sh >/dev/null 2>&1 &

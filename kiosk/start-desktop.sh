@@ -16,8 +16,8 @@ if [ -f /opt/kiosk/kiosk-config.sh ]; then
 fi
 
 # 1. Completely terminate fullscreen kiosk chromium so it yields display to desktop
-pkill -9 -f 'chromium.*--kiosk' 2>/dev/null || true
-sleep 0.6
+killall -9 chromium chromium-browser 2>/dev/null || pkill -9 -f chromium 2>/dev/null || true
+sleep 0.8
 
 # 2. Set desktop dark background
 pkill -f swaybg 2>/dev/null || true

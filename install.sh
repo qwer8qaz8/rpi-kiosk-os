@@ -258,6 +258,9 @@ apt-get install -y --no-install-recommends \
   avahi-utils \
   python3-paho-mqtt \
   python3-flask \
+  python3-opencv \
+  python3-evdev \
+  python3-numpy \
   plymouth \
   plymouth-themes \
   alsa-utils \

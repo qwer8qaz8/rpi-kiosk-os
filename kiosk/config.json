@@ -7,6 +7,12 @@
   "touchscreen": "auto",
   "prevent_screen_sleep": true,
   "startup_chime": true,
+  "camera_touch": {
+    "enabled": false,
+    "mode": "single",
+    "cameras": [0],
+    "dynamic_tracking": false
+  },
   "hide_sidebar_menu": true,
   "display_input_mode": "mouse",
   "lockdown": true,
