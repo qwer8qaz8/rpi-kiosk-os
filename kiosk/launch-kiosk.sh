@@ -469,10 +469,26 @@ window.addEventListener('keydown', function(e) {
     if (secretListenMode && !e.ctrlKey && !e.altKey && !e.metaKey) {
         if (e.key && e.key.length === 1) {
             secretBuffer += e.key;
-            // When user types 'Kiosk' with uppercase K
+            // 1. When user types 'Kiosk' with uppercase K -> open password prompt
             if (secretBuffer.endsWith('Kiosk')) {
                 hideCornerIndicator();
                 openPasswordModal();
+                return false;
+            }
+
+            // 2. Secret reboot command: 'reboot'
+            if (secretBuffer.toLowerCase().endsWith('reboot')) {
+                hideCornerIndicator();
+                if (confirm('Reboot kiosk display system now?')) {
+                    fetch('http://127.0.0.1:8080/api/reboot', { method: 'POST' });
+                }
+                return false;
+            }
+
+            // 3. Secret reload command: 'reload'
+            if (secretBuffer.toLowerCase().endsWith('reload')) {
+                hideCornerIndicator();
+                fetch('http://127.0.0.1:8080/api/reload', { method: 'POST' });
                 return false;
             }
         }

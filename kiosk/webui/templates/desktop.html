@@ -534,6 +534,15 @@
         </div>
 
         <div class="form-group">
+          <label class="form-label">Kiosk Display Mode</label>
+          <select class="form-input" id="cfg-kiosk-mode">
+            <option value="single">Single App Kiosk (Home Assistant Fullscreen)</option>
+            <option value="windowed">Windowed Kiosk (macOS Framed Window)</option>
+            <option value="multipage">Multi-Page Kiosk (Multi-Tab Navigation)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Display Brightness (<span id="bright-val">100%</span>)</label>
           <input type="range" style="width:100%; accent-color:#38bdf8;" min="10" max="100" id="cfg-bright" value="100" oninput="document.getElementById('bright-val').textContent = this.value + '%'" onchange="setBrightness(this.value)" />
         </div>
@@ -885,6 +894,7 @@
         .then(data => {
           if (data && data.config) {
             document.getElementById('cfg-url').value = data.config.dashboard_url || '';
+            document.getElementById('cfg-kiosk-mode').value = data.config.kiosk_mode || 'single';
             document.getElementById('cfg-bright').value = data.brightness || 100;
             document.getElementById('bright-val').textContent = (data.brightness || 100) + '%';
             document.getElementById('cfg-nightmode-enabled').checked = data.config.night_mode_enabled !== false;
@@ -899,6 +909,7 @@
 
     function saveSettings() {
       const url = document.getElementById('cfg-url').value.trim();
+      const kiosk_mode = document.getElementById('cfg-kiosk-mode').value;
       const night_enabled = document.getElementById('cfg-nightmode-enabled').checked;
       const night_start = document.getElementById('cfg-nightmode-start').value;
       const night_end = document.getElementById('cfg-nightmode-end').value;
@@ -908,6 +919,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           dashboard_url: url,
+          kiosk_mode: kiosk_mode,
           night_mode_enabled: night_enabled,
           night_mode_start: night_start,
           night_mode_end: night_end

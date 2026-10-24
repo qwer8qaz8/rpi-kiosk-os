@@ -411,6 +411,8 @@ def api_settings():
         cfg["kiosk_user_id"] = str(req.get("kiosk_user_id", "")).strip()
 
     # Night Mode Preferences
+    if "kiosk_mode" in req:
+        cfg["kiosk_mode"] = str(req["kiosk_mode"]).strip()
     if "night_mode_enabled" in req:
         cfg["night_mode_enabled"] = bool(req["night_mode_enabled"])
     if "night_mode_start" in req:
