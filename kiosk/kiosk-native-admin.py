@@ -432,10 +432,16 @@ class NativeAdminWindow(Gtk.Window):
             subprocess.Popen(["python3", test_script])
 
     def on_run_update(self, widget):
-        if os.path.exists("/opt/kiosk/kiosk-native-update.py"):
+        # Cleanly exit admin mode before update begins so it never glitches back into admin
+        self.destroy()
+        subprocess.run(["rm", "-f", "/tmp/kiosk-admin-workstation", "/tmp/kiosk-unlocked"])
+        if os.path.exists("/opt/kiosk/apply-update.sh"):
+            subprocess.Popen(["/bin/bash", "/opt/kiosk/apply-update.sh"])
+        elif os.path.exists("/opt/kiosk/kiosk-native-update.py"):
             subprocess.Popen(["python3", "/opt/kiosk/kiosk-native-update.py"])
         else:
             subprocess.Popen(["sudo", "/opt/kiosk/kiosk-config.sh", "--update"])
+        Gtk.main_quit()
 
     def on_restart_display(self, widget):
         subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"])

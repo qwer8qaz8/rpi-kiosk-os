@@ -155,8 +155,8 @@ class NativeAuthDialog(Gtk.Window):
         pw = self.entry.get_text().strip()
         configured_pin = str(self.config.get("webui_pin", "")).strip()
 
-        # Valid master passwords / pins
-        valid_keys = ["rusert 1921", "rusert1921", "kiosk", "admin", "1234"]
+        # Valid default keys or configured PIN
+        valid_keys = ["kiosk", "admin", "1234"]
         if configured_pin:
             valid_keys.append(configured_pin.lower())
 

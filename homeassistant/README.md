@@ -12,7 +12,7 @@ This directory contains resources to integrate your **Raspberry Pi Kiosk** deepl
 ## 📦 How to Install the Custom Lovelace Card
 
 ### Step 1: Copy `kiosk-card.js` to Home Assistant
-Copy `kiosk-card.js` into your Home Assistant `/config/www/` folder (on Umbrel: `/Apps/home-assistant/config/www/`).  
+Copy `kiosk-card.js` into your Home Assistant `/config/www/` folder.  
 *(If the `www` folder doesn't exist, create it).*
 
 ### Step 2: Add Resource in Home Assistant

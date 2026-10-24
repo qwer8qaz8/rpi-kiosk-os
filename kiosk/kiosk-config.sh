@@ -218,7 +218,24 @@ update_from_github() {
     apt-get install -y --no-install-recommends gammastep ddcutil grim ffmpeg avahi-daemon libnss-mdns avahi-utils >> "$log_file" 2>&1 || true
     systemctl enable --now avahi-daemon >> "$log_file" 2>&1 || true
 
-    cp --remove-destination -r "$TMP_DIR/kiosk/"* /opt/kiosk/
+    # Back up persistent on-device config before copying updated files
+    if [ -f /etc/kiosk/config.json ]; then
+      cp -f /etc/kiosk/config.json /tmp/kiosk-config-backup.json 2>/dev/null || true
+    fi
+
+    # Sync files excluding config.json
+    rsync -av --exclude 'config.json' "$TMP_DIR/kiosk/" /opt/kiosk/ 2>/dev/null || {
+      cp --remove-destination -r "$TMP_DIR/kiosk/"* /opt/kiosk/
+    }
+
+    # Restore persistent on-device config
+    if [ -f /tmp/kiosk-config-backup.json ]; then
+      cp -f /tmp/kiosk-config-backup.json /etc/kiosk/config.json 2>/dev/null || true
+      rm -f /tmp/kiosk-config-backup.json 2>/dev/null || true
+    fi
+
+    # Ensure system strictly returns to locked fullscreen kiosk mode (never admin mode)
+    rm -f /tmp/kiosk-admin-workstation /tmp/kiosk-unlocked
     cp --remove-destination "$TMP_DIR/kiosk-config.sh" /opt/kiosk/ 2>/dev/null || true
     cp --remove-destination "$TMP_DIR/systemd/"* /etc/systemd/system/
     chmod +x /opt/kiosk/*.sh /opt/kiosk/*.py /opt/kiosk/webui/*.py 2>/dev/null || true

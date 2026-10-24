@@ -183,12 +183,25 @@ class NativeUpdateWindow(Gtk.Window):
         self.set_step("Installing System Files...", "Copying updated scripts and configurations...", 0.70)
         time.sleep(1.0)
 
-        # 2. Sync to /opt/kiosk and /etc/kiosk
+        # 2. Sync to /opt/kiosk and /etc/kiosk, strictly preserving on-device config.json
         try:
             if os.path.exists(f"{repo_dir}/kiosk"):
-                subprocess.run(["sudo", "cp", "-r", f"{repo_dir}/kiosk/.", "/opt/kiosk/"], capture_output=True)
+                # Back up existing persistent on-device config
+                if os.path.exists("/etc/kiosk/config.json"):
+                    subprocess.run(["sudo", "cp", "-f", "/etc/kiosk/config.json", "/tmp/kiosk-config-backup.json"], capture_output=True)
+
+                # Sync code excluding config.json
+                subprocess.run(["sudo", "rsync", "-av", "--exclude=config.json", f"{repo_dir}/kiosk/", "/opt/kiosk/"], capture_output=True)
+
+                # Restore persistent on-device config
+                if os.path.exists("/tmp/kiosk-config-backup.json"):
+                    subprocess.run(["sudo", "cp", "-f", "/tmp/kiosk-config-backup.json", "/etc/kiosk/config.json"], capture_output=True)
+                    subprocess.run(["sudo", "rm", "-f", "/tmp/kiosk-config-backup.json"], capture_output=True)
+
                 subprocess.run(["sudo", "chmod", "+x", "/opt/kiosk/*.sh"], capture_output=True)
                 subprocess.run(["sudo", "chmod", "+x", "/opt/kiosk/*.py"], capture_output=True)
+                subprocess.run(["sudo", "cp", "-f", "/opt/kiosk/kioskos", "/usr/local/bin/kioskos"], capture_output=True)
+                subprocess.run(["sudo", "chmod", "+x", "/usr/local/bin/kioskos"], capture_output=True)
         except Exception:
             pass
 
@@ -198,6 +211,11 @@ class NativeUpdateWindow(Gtk.Window):
             subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
         except Exception:
             pass
+
+        # Ensure system strictly boots back into locked fullscreen kiosk mode (never admin mode)
+        subprocess.run(["sudo", "rm", "-f", "/tmp/kiosk-admin-workstation", "/tmp/kiosk-unlocked"], capture_output=True)
+        if os.path.exists("/opt/kiosk/lock-kiosk.sh"):
+            subprocess.run(["/bin/bash", "/opt/kiosk/lock-kiosk.sh"], capture_output=True)
 
         self.set_step("Update Complete ✓", "Restarting Raspberry Pi in 3 seconds...", 1.0)
         time.sleep(3.0)

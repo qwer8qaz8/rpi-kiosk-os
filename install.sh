@@ -198,7 +198,7 @@ if [ "$NON_INTERACTIVE" != "1" ]; then
 
   # 4. MQTT Broker
   if [ -z "$MQTT_BROKER" ]; then
-    echo -e "\nConfigure Home Assistant / Umbrel MQTT Integration (Optional):"
+    echo -e "\nConfigure Home Assistant / MQTT Integration (Optional):"
     read -r -p "Enter MQTT Broker Host/IP (leave blank to skip): " INPUT_MQTT_BROKER
     if [ -n "$INPUT_MQTT_BROKER" ]; then
       MQTT_BROKER="$INPUT_MQTT_BROKER"

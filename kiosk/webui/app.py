@@ -893,6 +893,13 @@ def api_camera_touch_calibrate():
 @app.route("/api/update", methods=["POST"])
 def api_update():
     logger.info("Executing system update via native KioskOS updater...")
+    # Clean up any workstation flags so update strictly boots into locked kiosk mode
+    try:
+        if Path("/tmp/kiosk-admin-workstation").exists():
+            Path("/tmp/kiosk-admin-workstation").unlink(missing_ok=True)
+    except Exception:
+        pass
+
     UPDATE_STATE["updating"] = True
     UPDATE_STATE["in_progress"] = True
     UPDATE_STATE["status"] = "updating"
