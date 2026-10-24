@@ -1040,48 +1040,59 @@ function tryAutoLogin() {
         }
     }
 
-    // Auto-type username & password if configured
+    // Auto-fill and auto-submit login if credentials exist or are browser-autofilled
     const autologinUser = '__AUTOLOGIN_USER__';
     const autologinPass = '__AUTOLOGIN_PASS__';
-    if (autologinUser && autologinPass) {
-        const userInput = findHAField('username') || querySelectorDeep('ha-credential-login input[type="text"], ha-auth-flow input[name="username"], form.login input[name="username"]');
-        const passInput = findHAField('password') || querySelectorDeep('ha-credential-login input[type="password"], ha-auth-flow input[name="password"], form.login input[name="password"]');
-        let submitBtn = querySelectorDeep('ha-credential-login mwc-button') || querySelectorDeep('mwc-button') || querySelectorDeep('ha-progress-button') || querySelectorDeep('button[type="submit"]');
 
-        if (!submitBtn) {
-            for (const b of queryAllDeep('button, [role="button"]')) {
-                const bTxt = (b.textContent || '').trim().toLowerCase();
-                if (bTxt === 'log in' || bTxt === 'login' || bTxt === 'sign in') {
-                    submitBtn = b;
-                    break;
-                }
-            }
-        }
+    const userInput = findHAField('username') || querySelectorDeep('ha-credential-login input[type="text"], ha-auth-flow input[name="username"], form.login input[name="username"], input[name="username"], input[autocomplete="username"]');
+    const passInput = findHAField('password') || querySelectorDeep('ha-credential-login input[type="password"], ha-auth-flow input[name="password"], form.login input[name="password"], input[type="password"]');
 
-        if (userInput && passInput) {
+    if (userInput && passInput) {
+        if (autologinUser && autologinPass) {
             if (userInput.value !== autologinUser || passInput.value !== autologinPass) {
                 console.log('[Kiosk] Autofilling credentials for ' + autologinUser + '...');
                 setFieldValue(userInput, autologinUser);
                 setFieldValue(passInput, autologinPass);
             }
+        }
 
-            // Ensure "Keep me logged in" checkbox is checked
-            const keepLoggedIn = querySelectorDeep('ha-checkbox, input[type="checkbox"]');
-            if (keepLoggedIn && !keepLoggedIn.checked) {
-                keepLoggedIn.click();
+        // Ensure "Keep me logged in" checkbox is checked
+        const keepLoggedIn = querySelectorDeep('ha-checkbox, input[type="checkbox"]');
+        if (keepLoggedIn && !keepLoggedIn.checked) {
+            keepLoggedIn.click();
+        }
+
+        // If password has any value (configured OR browser-autofilled): AUTO CLICK LOGIN BUTTON!
+        if (passInput.value && passInput.value.length > 0 && loginAttempts < 8) {
+            loginAttempts++;
+            let submitBtn = querySelectorDeep('ha-credential-login mwc-button') ||
+                            querySelectorDeep('ha-progress-button') ||
+                            querySelectorDeep('button[type="submit"]') ||
+                            querySelectorDeep('mwc-button');
+
+            if (!submitBtn) {
+                for (const b of queryAllDeep('button, [role="button"]')) {
+                    const bTxt = (b.textContent || '').trim().toLowerCase();
+                    if (bTxt === 'log in' || bTxt === 'login' || bTxt === 'sign in') {
+                        submitBtn = b;
+                        break;
+                    }
+                }
             }
 
-            if (submitBtn && loginAttempts < 6) {
-                loginAttempts++;
-                console.log('[Kiosk] Submitting login form (attempt ' + loginAttempts + ')...');
+            if (submitBtn) {
+                console.log('[Kiosk] Automatically clicking login button (attempt ' + loginAttempts + ')...');
                 const innerBtn = submitBtn.shadowRoot ? (submitBtn.shadowRoot.querySelector('button') || submitBtn) : submitBtn;
                 innerBtn.click();
                 submitBtn.click();
                 setTimeout(() => {
                     const form = (userInput.closest ? userInput.closest('form') : null) || querySelectorDeep('form');
-                    if (form && form.requestSubmit) form.requestSubmit();
-                }, 150);
-                if (loginAttempts >= 4) {
+                    if (form && form.requestSubmit) {
+                        try { form.requestSubmit(); } catch(e) { form.submit(); }
+                    }
+                }, 100);
+
+                if (loginAttempts >= 5) {
                     loggedIn = true;
                 }
             }
@@ -1858,62 +1869,60 @@ sed -i "s|__DASHBOARD_URL__|$DASHBOARD_URL|g" "$EXT_DIR/content.js"
 
 EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR" "--remote-debugging-port=9222" "--remote-allow-origins=*")
 
-if [ -f "/tmp/kiosk-admin-workstation" ]; then
-    echo "Starting Chromium in Admin Workstation Mode (Normal New Tab)..."
-    exec "$CHROMIUM_BIN" \
-      "${EXTRA_CHROME_FLAGS[@]}" \
-      --start-maximized \
-      --noerrdialogs \
-      --disable-infobars \
-      --no-first-run \
-      --password-store=basic \
-      --disk-cache-dir=/tmp/chromium-cache \
-      --enable-gpu-rasterization \
-      --enable-zero-copy \
-      "chrome://newtab"
-else
-    # Clean up any restored multi-tab sessions so Chromium strictly opens in single app mode
-    rm -rf "$HOME/.config/chromium/Default/Sessions" 2>/dev/null || true
-    rm -rf "$HOME/.config/chromium/Default/Current Session" 2>/dev/null || true
-    rm -rf "$HOME/.config/chromium/Default/Current Tabs" 2>/dev/null || true
-    rm -rf "$HOME/.config/chromium/Default/Last Session" 2>/dev/null || true
-    rm -rf "$HOME/.config/chromium/Default/Last Tabs" 2>/dev/null || true
-    if [ -f "$HOME/.config/chromium/Default/Preferences" ]; then
-        sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
-        sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
-    fi
+# Persistent session manager loop: keeps labwc compositor alive permanently
+while true; do
+    if [ -f "/tmp/kiosk-admin-workstation" ]; then
+        # Admin Workstation Mode: keep shell alive while desktop workstation is running
+        sleep 1
+    else
+        # Fullscreen Kiosk Mode
+        # Clean up any restored multi-tab sessions so Chromium strictly opens in single app mode
+        rm -rf "$HOME/.config/chromium/Default/Sessions" 2>/dev/null || true
+        rm -rf "$HOME/.config/chromium/Default/Current Session" 2>/dev/null || true
+        rm -rf "$HOME/.config/chromium/Default/Current Tabs" 2>/dev/null || true
+        rm -rf "$HOME/.config/chromium/Default/Last Session" 2>/dev/null || true
+        rm -rf "$HOME/.config/chromium/Default/Last Tabs" 2>/dev/null || true
+        if [ -f "$HOME/.config/chromium/Default/Preferences" ]; then
+            sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
+            sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
+        fi
 
-    # Launch Hardware-Accelerated Native GTK3 Splash Screen on Wayland
-    if [ -f "/opt/kiosk/kiosk-native-splash.py" ]; then
-        echo "[kiosk] Displaying Native GTK3 Splash Screen..."
-        python3 /opt/kiosk/kiosk-native-splash.py "$DASHBOARD_URL" || true
-    fi
+        # Launch Hardware-Accelerated Native GTK3 Splash Screen on Wayland (only on initial boot)
+        if [ -f "/opt/kiosk/kiosk-native-splash.py" ] && [ ! -f "/tmp/kiosk-boot-splash-done" ]; then
+            touch "/tmp/kiosk-boot-splash-done"
+            echo "[kiosk] Displaying Native GTK3 Splash Screen..."
+            python3 /opt/kiosk/kiosk-native-splash.py "$DASHBOARD_URL" || true
+        fi
 
-    # Launch Chromium directly into Home Assistant Dashboard in Fullscreen Kiosk Mode
-    exec "$CHROMIUM_BIN" \
-      "${EXTRA_CHROME_FLAGS[@]}" \
-      --kiosk \
-      --app="$DASHBOARD_URL" \
-      --start-fullscreen \
-      --noerrdialogs \
-      --disable-infobars \
-      --no-first-run \
-      --check-for-update-interval=31536000 \
-      --disable-pinch \
-      --overscroll-history-navigation=0 \
-      --enable-features=OverlayScrollbar \
-      --disable-features=Translate,OptimizationHints,MediaRouter \
-      --disable-session-crashed-bubble \
-      --disable-context-menu \
-      --disable-component-update \
-      --disable-background-networking \
-      --disable-domain-reliability \
-      --disable-sync \
-      --no-default-browser-check \
-      --autoplay-policy=no-user-gesture-required \
-      --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
-      --password-store=basic \
-      --disk-cache-dir=/tmp/chromium-cache \
-      --enable-gpu-rasterization \
-      --enable-zero-copy
-fi
+        # Launch Chromium directly into Home Assistant Dashboard in Fullscreen Kiosk Mode
+        # (Executed without exec so this supervisor loop and labwc remain active)
+        "$CHROMIUM_BIN" \
+          "${EXTRA_CHROME_FLAGS[@]}" \
+          --kiosk \
+          --app="$DASHBOARD_URL" \
+          --start-fullscreen \
+          --noerrdialogs \
+          --disable-infobars \
+          --no-first-run \
+          --check-for-update-interval=31536000 \
+          --disable-pinch \
+          --overscroll-history-navigation=0 \
+          --enable-features=OverlayScrollbar \
+          --disable-features=Translate,OptimizationHints,MediaRouter \
+          --disable-session-crashed-bubble \
+          --disable-context-menu \
+          --disable-component-update \
+          --disable-background-networking \
+          --disable-domain-reliability \
+          --disable-sync \
+          --no-default-browser-check \
+          --autoplay-policy=no-user-gesture-required \
+          --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
+          --password-store=basic \
+          --disk-cache-dir=/tmp/chromium-cache \
+          --enable-gpu-rasterization \
+          --enable-zero-copy || true
+
+        sleep 0.5
+    fi
+done

@@ -15,8 +15,8 @@ if [ -f /opt/kiosk/kiosk-config.sh ]; then
     sudo /opt/kiosk/kiosk-config.sh --unlock 2>/dev/null || true
 fi
 
-# 1. Completely terminate all fullscreen kiosk chromium processes so they don't merge tabs
-pkill -9 -f 'chromium' 2>/dev/null || true
+# 1. Completely terminate fullscreen kiosk chromium so it yields display to desktop
+pkill -9 -f 'chromium.*--kiosk' 2>/dev/null || true
 sleep 0.6
 
 # 2. Set desktop dark background
