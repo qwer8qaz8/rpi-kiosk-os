@@ -19,7 +19,8 @@ import logging
 import subprocess
 import secrets
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, send_file, Response
+import time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("kiosk-webui")
@@ -164,6 +165,49 @@ def get_screen_brightness():
     return int(cfg.get("brightness", 100))
 
 
+LAST_SCREENSHOT_TIME = 0
+SCREENSHOT_FILE = Path("/tmp/kiosk-screenshot.jpg")
+CAM_SNAPSHOT_FILE = Path("/tmp/kiosk-cam.jpg")
+
+
+def capture_screenshot():
+    global LAST_SCREENSHOT_TIME
+    now = time.time()
+    if now - LAST_SCREENSHOT_TIME < 1.0 and SCREENSHOT_FILE.exists():
+        return SCREENSHOT_FILE
+
+    try:
+        env = os.environ.copy()
+        if "XDG_RUNTIME_DIR" not in env:
+            env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+        if "WAYLAND_DISPLAY" not in env:
+            env["WAYLAND_DISPLAY"] = "wayland-0"
+
+        subprocess.run(["grim", "-t", "jpeg", "-q", "75", str(SCREENSHOT_FILE)],
+                       env=env, timeout=3, capture_output=True)
+        if SCREENSHOT_FILE.exists():
+            LAST_SCREENSHOT_TIME = now
+            return SCREENSHOT_FILE
+    except Exception as e:
+        logger.debug(f"Grim screenshot error: {e}")
+    return None
+
+
+def capture_cam_snapshot():
+    video_dev = "/dev/video0"
+    if not os.path.exists(video_dev):
+        return None
+    try:
+        subprocess.run(["ffmpeg", "-y", "-f", "v4l2", "-i", video_dev,
+                        "-vframes", "1", "-q:v", "3", str(CAM_SNAPSHOT_FILE)],
+                       timeout=4, capture_output=True)
+        if CAM_SNAPSHOT_FILE.exists():
+            return CAM_SNAPSHOT_FILE
+    except Exception as e:
+        logger.debug(f"Camera frame error: {e}")
+    return None
+
+
 @app.route("/")
 def index():
     cfg = load_config()
@@ -263,6 +307,12 @@ def api_settings():
     # Kiosk User ID (for reference & snippet)
     if "kiosk_user_id" in req:
         cfg["kiosk_user_id"] = str(req.get("kiosk_user_id", "")).strip()
+
+    # Auto-Login Credentials (auto-type)
+    if "ha_username" in req:
+        cfg["ha_username"] = str(req.get("ha_username", "")).strip()
+    if "ha_password" in req and req.get("ha_password") != "********":
+        cfg["ha_password"] = str(req.get("ha_password", ""))
 
     # Brightness
     if "brightness" in req:

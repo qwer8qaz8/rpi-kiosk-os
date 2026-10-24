@@ -188,8 +188,7 @@ policy = {
     'BookmarkBarEnabled': False,
     'ShowHomeButton': False,
     'HomepageIsNewTabPage': False,
-    'NewTabPageLocation': dash_url,
-    'ExtensionInstallBlocklist': ['*']
+    'NewTabPageLocation': dash_url
 }
 
 for d in policy_dirs:
@@ -201,8 +200,106 @@ for d in policy_dirs:
         pass
 " 2>/dev/null || true
 
+# Load Auto-Login credentials from config if configured
+AUTOLOGIN_USER=$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(json.load(f).get('ha_username', ''))
+except Exception:
+    print('')
+")
+
+AUTOLOGIN_PASS=$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(json.load(f).get('ha_password', ''))
+except Exception:
+    print('')
+")
+
+EXTRA_CHROME_FLAGS=()
+if [ -n "$AUTOLOGIN_USER" ] && [ -n "$AUTOLOGIN_PASS" ]; then
+  EXT_DIR="/tmp/kiosk-autologin-extension"
+  mkdir -p "$EXT_DIR"
+  cat << 'EOF_EXT_MANIFEST' > "$EXT_DIR/manifest.json"
+{
+  "manifest_version": 3,
+  "name": "Kiosk Auto Login",
+  "version": "1.0",
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
+EOF_EXT_MANIFEST
+
+  cat << EOF_EXT_JS > "$EXT_DIR/content.js"
+function querySelectorDeep(selector, root = document) {
+    let found = root.querySelector(selector);
+    if (found) return found;
+    const children = root.querySelectorAll('*');
+    for (const child of children) {
+        if (child.shadowRoot) {
+            found = querySelectorDeep(selector, child.shadowRoot);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function setNativeValue(element, value) {
+    const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+    const prototype = Object.getPrototypeOf(element);
+    const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+    if (valueSetter && valueSetter !== prototypeValueSetter) {
+        prototypeValueSetter.call(element, value);
+    } else if (valueSetter) {
+        valueSetter.call(element, value);
+    } else {
+        element.value = value;
+    }
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+let loggedIn = false;
+function tryAutoLogin() {
+    if (loggedIn) return;
+    const userInput = querySelectorDeep('ha-credential-login input[name="username"]') || querySelectorDeep('input[name="username"]');
+    const passInput = querySelectorDeep('ha-credential-login input[name="password"]') || querySelectorDeep('input[name="password"]');
+    const submitBtn = querySelectorDeep('ha-credential-login mwc-button') || querySelectorDeep('button[type="submit"]') || querySelectorDeep('mwc-button');
+
+    if (userInput && passInput && submitBtn) {
+        if (userInput.value !== '$AUTOLOGIN_USER') {
+            console.log('[Kiosk] Auto-typing login credentials...');
+            setNativeValue(userInput, '$AUTOLOGIN_USER');
+            setNativeValue(passInput, '$AUTOLOGIN_PASS');
+            setTimeout(() => {
+                submitBtn.click();
+                loggedIn = true;
+                console.log('[Kiosk] Logged in successfully!');
+            }, 300);
+        }
+    }
+}
+
+const observer = new MutationObserver(() => tryAutoLogin());
+observer.observe(document.documentElement, { childList: true, subtree: true });
+setTimeout(tryAutoLogin, 800);
+setTimeout(tryAutoLogin, 2500);
+EOF_EXT_JS
+
+  EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR")
+fi
+
 # Launch Chromium locked in Standalone Application Kiosk mode (--app disables tab strips and Ctrl+T shortcuts)
 exec "$CHROMIUM_BIN" \
+  "${EXTRA_CHROME_FLAGS[@]}" \
   --app="$DASHBOARD_URL" \
   --kiosk \
   --noerrdialogs \

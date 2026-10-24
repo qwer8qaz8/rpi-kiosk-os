@@ -198,9 +198,9 @@ update_from_github() {
   TMP_DIR=$(mktemp -d)
   if git clone --depth 1 "$REPO_URL" "$TMP_DIR" 2>/dev/null; then
     echo -e "${GREEN}Downloaded latest release.${NC}"
-    # Install any newly added dependencies (gammastep, ddcutil, avahi-daemon, libnss-mdns)
+    # Install any newly added dependencies (gammastep, ddcutil, grim, ffmpeg, avahi-daemon, libnss-mdns)
     apt-get update -y 2>/dev/null || true
-    apt-get install -y --no-install-recommends gammastep ddcutil avahi-daemon libnss-mdns avahi-utils 2>/dev/null || true
+    apt-get install -y --no-install-recommends gammastep ddcutil grim ffmpeg avahi-daemon libnss-mdns avahi-utils 2>/dev/null || true
     systemctl enable --now avahi-daemon 2>/dev/null || true
 
     cp -r "$TMP_DIR/kiosk/"* /opt/kiosk/
@@ -337,16 +337,18 @@ if [ "$#" -gt 0 ]; then
       echo -e "${GREEN}Kiosk display reloaded!${NC}"
       exit 0
       ;;
-    lock)
-      require_root
-      apply_security_policy
-      systemctl restart kiosk-display
-      exit 0
-      ;;
     unlock)
       require_root
       remove_security_policy
       systemctl restart kiosk-display
+      echo -e "${GREEN}✓ Lockdown removed (Configured successfully!)${NC}"
+      exit 0
+      ;;
+    lock)
+      require_root
+      apply_security_policy
+      systemctl restart kiosk-display
+      echo -e "${GREEN}✓ Lockdown applied (Configured successfully!)${NC}"
       exit 0
       ;;
     url)
@@ -358,7 +360,24 @@ if [ "$#" -gt 0 ]; then
       save_config_val "dashboard_url" "$clean_url"
       apply_security_policy
       systemctl restart kiosk-display 2>/dev/null || true
-      echo -e "${GREEN}Dashboard URL updated to: $clean_url${NC}"
+      echo -e "${GREEN}✓ Dashboard URL updated to: $clean_url (Configured successfully!)${NC}"
+      exit 0
+      ;;
+    autologin)
+      require_root
+      ha_user="$2"
+      ha_pass="$3"
+      if [ -z "$ha_user" ] || [ -z "$ha_pass" ]; then
+        echo -e "\n${CYAN}=== Configure Auto-Type Login Credentials ===${NC}"
+        echo "The kiosk will automatically type these credentials whenever the Home Assistant login screen appears."
+        read -r -p "Home Assistant Username: " ha_user
+        read -r -s -p "Home Assistant Password: " ha_pass
+        echo ""
+      fi
+      save_config_val "ha_username" "$ha_user"
+      save_config_val "ha_password" "$ha_pass"
+      systemctl restart kiosk-display 2>/dev/null || true
+      echo -e "${GREEN}✓ Auto-login credentials saved! Kiosk display will now auto-type and log in.${NC}"
       exit 0
       ;;
     reboot)
@@ -505,6 +524,13 @@ if [ "$ACTION_PERFORMED" -eq 1 ]; then
   exit 0
 fi
 
+# If arguments were provided but none matched, exit with error instead of opening the menu
+if [ "$#" -gt 0 ] || [ "${#ORIGINAL_ARGS[@]}" -gt 0 ]; then
+  echo -e "${RED}Unknown command or option.${NC}"
+  echo "Usage: kiosk [url <URL> | autologin | unlock | lock | on | off | brightness <1-100> | update | status]"
+  exit 1
+fi
+
 # Interactive Menu Mode (if run without flags)
 clear
 echo -e "${CYAN}${BOLD}"
@@ -519,18 +545,19 @@ web_active=$(systemctl is-active kiosk-webui 2>/dev/null || echo "inactive")
 
 echo "1) Choose Kiosk Preset (Home Assistant, MagicMirror², Grafana, 3D Printer, DAKboard, Custom)"
 echo "2) Change Dashboard URL directly"
-echo "3) Configure Home Assistant Auto-Login (trusted_networks snippet)"
-echo "4) Apply / Refresh Enterprise Security Lockdown"
-echo "5) Toggle Screen Power (Currently: $p_status)"
-echo "6) Adjust Screen Brightness (Currently: ${b_status}%)"
-echo "7) Rotate Display Orientation"
-echo "8) Toggle Web Dashboard Port 8080 (Currently: $web_active)"
-echo "9) Reload Kiosk Display"
-echo "10) Set Static IP Address on Pi"
-echo "11) Check for Updates from GitHub"
-echo "12) Exit"
+echo "3) Set Auto-Type Login Credentials (Automatically types Username & Password on screen)"
+echo "4) Configure Home Assistant trusted_networks YAML snippet"
+echo "5) Apply / Refresh Enterprise Security Lockdown"
+echo "6) Toggle Screen Power (Currently: $p_status)"
+echo "7) Adjust Screen Brightness (Currently: ${b_status}%)"
+echo "8) Rotate Display Orientation"
+echo "9) Toggle Web Dashboard Port 8080 (Currently: $web_active)"
+echo "10) Reload Kiosk Display"
+echo "11) Set Static IP Address on Pi"
+echo "12) Check for Updates from GitHub"
+echo "13) Exit"
 echo ""
-read -r -p "Select an option [1-12]: " CHOICE
+read -r -p "Select an option [1-13]: " CHOICE
 
 case "$CHOICE" in
   1)
@@ -577,27 +604,38 @@ case "$CHOICE" in
     save_config_val "dashboard_url" "$NEW_URL"
     apply_security_policy
     sudo systemctl restart kiosk-display
-    echo -e "${GREEN}URL updated and kiosk reloaded!${NC}"
+    echo -e "${GREEN}✓ URL updated and kiosk reloaded!${NC}"
     ;;
   3)
+    echo -e "\n${CYAN}=== Auto-Type Login Credentials ===${NC}"
+    echo "The kiosk will automatically type these credentials whenever the Home Assistant login screen appears."
+    read -r -p "Enter Home Assistant Username: " ha_user
+    read -r -s -p "Enter Home Assistant Password: " ha_pass
+    echo ""
+    save_config_val "ha_username" "$ha_user"
+    save_config_val "ha_password" "$ha_pass"
+    sudo systemctl restart kiosk-display 2>/dev/null || true
+    echo -e "${GREEN}✓ Auto-login credentials saved! Kiosk display will now auto-type and log in.${NC}"
+    ;;
+  4)
     current_uid=$(load_config_val "kiosk_user_id" "")
     read -r -p "Enter your Home Assistant Kiosk User ID [$current_uid]: " NEW_UID
     NEW_UID="${NEW_UID:-$current_uid}"
     save_config_val "kiosk_user_id" "$NEW_UID"
     generate_ha_snippet
     ;;
-  4)
+  5)
     apply_security_policy
     sudo systemctl restart kiosk-display
     ;;
-  5)
+  6)
     /opt/kiosk/screen-control.sh toggle
     ;;
-  6)
+  7)
     read -r -p "Enter brightness percentage (1 to 100): " B_VAL
     /opt/kiosk/screen-control.sh brightness "$B_VAL"
     ;;
-  7)
+  8)
     echo "1) Normal (0°)"
     echo "2) Portrait (90°)"
     echo "3) Inverted (180°)"
@@ -611,7 +649,7 @@ case "$CHOICE" in
     esac
     /opt/kiosk/screen-control.sh rotate "$ROT"
     ;;
-  8)
+  9)
     if [ "$web_active" = "active" ]; then
       require_root
       systemctl stop kiosk-webui
@@ -624,18 +662,18 @@ case "$CHOICE" in
       echo -e "${GREEN}Web UI service (port 8080) enabled and started!${NC}"
     fi
     ;;
-  9)
+  10)
     require_root
     systemctl restart kiosk-display
-    echo -e "${GREEN}Kiosk display reloaded!${NC}"
+    echo -e "${GREEN}✓ Kiosk display reloaded!${NC}"
     ;;
-  10)
+  11)
     cur_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     read -r -p "Enter desired static IP address [$cur_ip]: " S_IP
     S_IP="${S_IP:-$cur_ip}"
     set_static_ip "$S_IP"
     ;;
-  11)
+  12)
     update_from_github
     ;;
   *)

@@ -244,6 +244,8 @@ apt-get install -y --no-install-recommends \
   wlr-randr \
   gammastep \
   ddcutil \
+  grim \
+  ffmpeg \
   avahi-daemon \
   libnss-mdns \
   avahi-utils \

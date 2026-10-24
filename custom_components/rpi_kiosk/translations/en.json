@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Raspberry Pi Kiosk",
+        "description": "Enter the IP address and port of your Raspberry Pi Kiosk.",
+        "data": {
+          "host": "IP Address or Hostname",
+          "port": "Web Port (Default 8080)",
+          "pin": "Web UI Security PIN (Optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Kiosk. Please verify the IP address and make sure the kiosk is running."
+    }
+  }
+}
