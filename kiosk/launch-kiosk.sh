@@ -293,20 +293,20 @@ function showCornerIndicator(status = 'listening') {
     }
 
     if (status === 'listening') {
-        secretIndicatorEl.style.background = 'rgba(15, 23, 42, 0.94)';
+        secretIndicatorEl.style.background = 'rgba(15, 23, 42, 0.95)';
         secretIndicatorEl.style.border = '1px solid #38bdf8';
         secretIndicatorEl.style.color = '#38bdf8';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px #38bdf8;"></span><span>Listening...</span>';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#38bdf8; box-shadow:0 0 10px #38bdf8;"></span><span>● Listening...</span>';
     } else if (status === 'success') {
         secretIndicatorEl.style.background = 'rgba(6, 78, 59, 0.96)';
         secretIndicatorEl.style.border = '1px solid #34d399';
         secretIndicatorEl.style.color = '#34d399';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Exiting Fullscreen</span>';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 10px #34d399;"></span><span>✓ Admin Workstation Active</span>';
     } else if (status === 'error') {
         secretIndicatorEl.style.background = 'rgba(127, 29, 29, 0.96)';
         secretIndicatorEl.style.border = '1px solid #f87171';
         secretIndicatorEl.style.color = '#f87171';
-        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Cancelled</span>';
+        secretIndicatorEl.innerHTML = '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#f87171; box-shadow:0 0 10px #f87171;"></span><span>✕ Invalid Code</span>';
     }
     secretIndicatorEl.style.display = 'flex';
 }
@@ -320,73 +320,103 @@ function hideCornerIndicator() {
     if (secretListenTimer) clearTimeout(secretListenTimer);
 }
 
-// 1. Advanced Keyboard Shortcuts & Lockdown Handler
-window.addEventListener('keydown', function(e) {
-    // A) Secret Listen Mode Shortcut: Ctrl + Alt + = (or +)
-    if (e.ctrlKey && e.altKey && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.keyCode === 187)) {
-        e.preventDefault();
-        e.stopPropagation();
-        secretListenMode = true;
-        secretBuffer = '';
-        showCornerIndicator('listening');
-        if (secretListenTimer) clearTimeout(secretListenTimer);
-        secretListenTimer = setTimeout(() => {
-            hideCornerIndicator();
-        }, 10000); // 10 second timeout
-        return false;
+let passwordModalEl = null;
+
+function openPasswordModal() {
+    hideCornerIndicator();
+    if (!passwordModalEl) {
+        passwordModalEl = document.createElement('div');
+        passwordModalEl.id = 'rpi-kiosk-password-modal';
+        passwordModalEl.style.cssText = `
+            position: fixed; inset: 0; z-index: 2147483647;
+            background: rgba(10, 14, 26, 0.88);
+            backdrop-filter: blur(25px) saturate(180%);
+            -webkit-backdrop-filter: blur(25px) saturate(180%);
+            display: flex; align-items: center; justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        `;
+        document.body.appendChild(passwordModalEl);
     }
 
-    // Handle Secret Listen Mode typing
-    if (secretListenMode) {
-        // Esc cancels and closes corner indicator
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            hideCornerIndicator();
-            return false;
-        }
+    passwordModalEl.innerHTML = `
+        <div style="background: rgba(24, 32, 47, 0.95); border: 1px solid rgba(255,255,255,0.16); border-radius: 18px; width: 380px; max-width: 92vw; padding: 32px 28px; box-shadow: 0 24px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08); text-align: center; color: #fff;">
+            <div style="font-size: 36px; margin-bottom: 12px;">🔒</div>
+            <h2 style="font-size: 20px; font-weight: 700; margin: 0 0 6px 0; letter-spacing: -0.3px;">Administrator Authentication</h2>
+            <p style="font-size: 13px; color: #94a3b8; margin: 0 0 20px 0; line-height: 1.4;">Enter your administrator password or PIN to unlock macOS Admin Workstation.</p>
+            <input type="password" id="kiosk-auth-input" placeholder="Password or PIN" autofocus style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 15px; outline: none; margin-bottom: 14px;" />
+            <div id="kiosk-auth-error" style="color: #f87171; font-size: 12px; margin-bottom: 12px; display: none;"></div>
+            <div style="display: flex; gap: 10px;">
+                <button id="kiosk-auth-cancel" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; font-size: 13px; font-weight: 600; cursor: pointer;">Cancel (Esc)</button>
+                <button id="kiosk-auth-submit" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">Unlock (Enter)</button>
+            </div>
+            <div style="margin-top: 14px; font-size: 11px; color: #64748b;">KioskOS Enterprise Security</div>
+        </div>
+    `;
 
-        // Enter submits buffered command
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            e.stopPropagation();
-            if (secretBuffer.trim().toLowerCase() === 'admin') {
-                showCornerIndicator('success');
-                // Exit Fullscreen mode!
-                try {
-                    if (document.fullscreenElement) {
-                        document.exitFullscreen().catch(() => {});
-                    }
-                } catch (err) {}
-                fetch('http://127.0.0.1:8080/api/admin/exit_fullscreen', { method: 'POST' }).catch(() => {});
-                window.__kiosk_unlocked = true;
-                setTimeout(() => {
-                    hideCornerIndicator();
-                }, 1500);
+    passwordModalEl.style.display = 'flex';
+    const input = passwordModalEl.querySelector('#kiosk-auth-input');
+    const submitBtn = passwordModalEl.querySelector('#kiosk-auth-submit');
+    const cancelBtn = passwordModalEl.querySelector('#kiosk-auth-cancel');
+    const errBox = passwordModalEl.querySelector('#kiosk-auth-error');
+
+    const doSubmit = () => {
+        const val = input.value.trim();
+        if (!val) return;
+        errBox.style.display = 'none';
+        submitBtn.textContent = 'Verifying...';
+        submitBtn.disabled = true;
+
+        fetch('http://127.0.0.1:8080/api/admin/verify_pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: val })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.authenticated || data.success) {
+                submitBtn.textContent = '✓ Unlocking...';
+                submitBtn.style.background = '#10b981';
+                fetch('http://127.0.0.1:8080/api/admin/enable_workstation', { method: 'POST' })
+                    .then(() => {
+                        window.location.href = 'http://127.0.0.1:8080/desktop';
+                    })
+                    .catch(() => {
+                        window.location.href = 'http://127.0.0.1:8080/desktop';
+                    });
             } else {
-                showCornerIndicator('error');
-                setTimeout(() => {
-                    hideCornerIndicator();
-                }, 900);
+                submitBtn.textContent = 'Unlock (Enter)';
+                submitBtn.disabled = false;
+                errBox.textContent = data.error || 'Incorrect password. Please try again.';
+                errBox.style.display = 'block';
+                input.value = '';
+                input.focus();
             }
-            return false;
-        }
+        })
+        .catch(() => {
+            submitBtn.textContent = 'Unlock (Enter)';
+            submitBtn.disabled = false;
+            errBox.textContent = 'Connection error. Retrying...';
+            errBox.style.display = 'block';
+        });
+    };
 
-        // Backspace
-        if (e.key === 'Backspace') {
-            e.preventDefault();
-            e.stopPropagation();
-            secretBuffer = secretBuffer.slice(0, -1);
-            return false;
-        }
+    submitBtn.onclick = doSubmit;
+    cancelBtn.onclick = () => { passwordModalEl.style.display = 'none'; };
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') doSubmit();
+        if (e.key === 'Escape') passwordModalEl.style.display = 'none';
+    };
+    setTimeout(() => input.focus(), 60);
+}
 
-        // Buffer printable characters
-        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            secretBuffer += e.key;
-            return false;
-        }
+// 1. Advanced Keyboard Shortcuts & Lockdown Handler
+window.addEventListener('keydown', function(e) {
+    // A) Admin Unlock Shortcut: Ctrl + Alt + = (or + or A or K)
+    if (e.ctrlKey && e.altKey && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.code === 'NumpadEqual' || e.code === 'NumpadAdd' || e.keyCode === 187 || e.keyCode === 61 || e.keyCode === 107 || e.key === 'a' || e.key === 'A' || e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openPasswordModal();
+        return false;
     }
 
     // B) EMERGENCY PANIC LOCK: Ctrl+Alt+Shift+L or Ctrl+Alt+Shift+Q
@@ -397,7 +427,7 @@ window.addEventListener('keydown', function(e) {
         return false;
     }
 
-    // B) QUICK REBOOT SHORTCUT: Ctrl+Alt+Shift+R
+    // C) QUICK REBOOT SHORTCUT: Ctrl+Alt+Shift+R
     if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
         e.preventDefault();
         e.stopPropagation();
@@ -407,7 +437,7 @@ window.addEventListener('keydown', function(e) {
         return false;
     }
 
-    // C) QUICK SCREEN TOGGLE: Ctrl+Alt+Shift+B
+    // D) QUICK SCREEN TOGGLE: Ctrl+Alt+Shift+B
     if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
         e.preventDefault();
         e.stopPropagation();
@@ -416,14 +446,6 @@ window.addEventListener('keydown', function(e) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ state: 'toggle' })
         });
-        return false;
-    }
-
-    // D) TOGGLE ADMIN MODAL: Ctrl+Alt+A or Ctrl+Alt+K
-    if (e.ctrlKey && e.altKey && (e.key === 'a' || e.key === 'A' || e.key === 'k' || e.key === 'K')) {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleAdminModal();
         return false;
     }
 
@@ -460,7 +482,7 @@ window.addEventListener('keydown', function(e) {
         }
     }
 
-    // If temporarily unlocked, permit standard browsing
+    // If in Workstation Mode or temporarily unlocked, permit standard browsing & new tabs
     if (window.__kiosk_unlocked) {
         return true;
     }
@@ -489,114 +511,32 @@ window.addEventListener('contextmenu', function(e) {
     }
 }, true);
 
-// Touchscreen 5-tap Secret Hot Corner (Top-Right 60x60px)
-let touchCornerTaps = 0;
-let touchCornerTimer = null;
-function setupHotCorner() {
-    if (document.getElementById('rpi-kiosk-hotcorner')) return;
-    const corner = document.createElement('div');
-    corner.id = 'rpi-kiosk-hotcorner';
-    corner.style.cssText = 'position:fixed; top:0; right:0; width:64px; height:64px; z-index:2147483640; background:transparent; cursor:default;';
-    const registerTap = () => {
-        touchCornerTaps++;
-        if (touchCornerTimer) clearTimeout(touchCornerTimer);
-        touchCornerTimer = setTimeout(() => { touchCornerTaps = 0; }, 2500);
-        if (touchCornerTaps >= 5) {
-            touchCornerTaps = 0;
-            toggleAdminModal();
-        }
-    };
-    corner.addEventListener('click', registerTap);
-    corner.addEventListener('touchstart', registerTap, { passive: true });
-    if (document.body) document.body.appendChild(corner);
-}
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupHotCorner);
-} else {
-    setupHotCorner();
-}
-
-// 2. Hide Home Assistant sidebar, drawer, hamburger menu button, and profile logout
+// 2. Clean CSS Injection to hide sidebar & prevent accidental navigation
 try {
     localStorage.setItem('dockedSidebar', '"always_hidden"');
 } catch (e) {}
 
-function hideSidebarElements(root = document) {
-    try {
-        const targets = root.querySelectorAll ? root.querySelectorAll('ha-sidebar, ha-menu-button, #drawer, ha-drawer, .mdc-drawer, [data-panel="profile"], .profile') : [];
-        for (const t of targets) {
-            t.style.setProperty('display', 'none', 'important');
-            t.style.setProperty('visibility', 'hidden', 'important');
-            t.style.setProperty('width', '0px', 'important');
-            t.style.setProperty('max-width', '0px', 'important');
-        }
-        if (root.querySelectorAll) {
-            const drawers = root.querySelectorAll('ha-drawer');
-            for (const d of drawers) {
-                d.removeAttribute('open');
-            }
-        }
-        const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
-        for (const el of all) {
-            if (el.shadowRoot) {
-                hideSidebarElements(el.shadowRoot);
-            }
-        }
-    } catch (e) {}
+function ensureKioskStyles() {
+    if (document.getElementById('rpi-kiosk-lockdown-style')) return;
+    const style = document.createElement('style');
+    style.id = 'rpi-kiosk-lockdown-style';
+    style.textContent = `
+        ha-sidebar, #drawer, ha-drawer, .mdc-drawer { display: none !important; width: 0 !important; max-width: 0 !important; visibility: hidden !important; }
+        ha-menu-button { display: none !important; visibility: hidden !important; }
+        .menu, [data-panel="profile"], .profile { display: none !important; }
+        * { -webkit-user-select: none !important; user-select: none !important; -webkit-user-drag: none !important; }
+        input, textarea { -webkit-user-select: text !important; user-select: text !important; }
+    `;
+    (document.head || document.documentElement).appendChild(style);
 }
-
-function injectKioskStyles(root = document) {
-    try {
-        if (!document.getElementById('rpi-kiosk-lockdown-style')) {
-            const style = document.createElement('style');
-            style.id = 'rpi-kiosk-lockdown-style';
-            style.textContent = `
-                ha-sidebar, #drawer, ha-drawer, .mdc-drawer { display: none !important; width: 0 !important; max-width: 0 !important; visibility: hidden !important; }
-                ha-menu-button { display: none !important; visibility: hidden !important; }
-                .menu, [data-panel="profile"], .profile { display: none !important; }
-                * { -webkit-user-select: none !important; user-select: none !important; -webkit-user-drag: none !important; }
-                input, textarea { -webkit-user-select: text !important; user-select: text !important; }
-            `;
-            if (document.head || document.documentElement) {
-                (document.head || document.documentElement).appendChild(style);
-            }
-        }
-
-        function styleShadowRoots(node) {
-            if (!node) return;
-            if (node.shadowRoot) {
-                if (!node.shadowRoot.getElementById('rpi-kiosk-lockdown-style')) {
-                    const shadowStyle = document.createElement('style');
-                    shadowStyle.id = 'rpi-kiosk-lockdown-style';
-                    shadowStyle.textContent = `
-                        ha-sidebar, #drawer, ha-drawer, .mdc-drawer { display: none !important; width: 0 !important; max-width: 0 !important; visibility: hidden !important; }
-                        ha-menu-button { display: none !important; visibility: hidden !important; }
-                        .menu, [data-panel="profile"], .profile { display: none !important; }
-                    `;
-                    node.shadowRoot.appendChild(shadowStyle);
-                }
-                styleShadowRoots(node.shadowRoot);
-            }
-            const children = node.querySelectorAll ? node.querySelectorAll('*') : [];
-            for (const child of children) {
-                if (child.shadowRoot) {
-                    styleShadowRoots(child);
-                }
-            }
-        }
-        styleShadowRoots(root);
-        hideSidebarElements(root);
-    } catch (e) {}
-}
-injectKioskStyles(document);
-document.addEventListener('DOMContentLoaded', () => injectKioskStyles(document));
-setInterval(() => injectKioskStyles(document), 300);
+ensureKioskStyles();
+document.addEventListener('DOMContentLoaded', ensureKioskStyles);
 
 // 3. Shadow-DOM query helpers
 function querySelectorDeep(selector, root = document) {
-    let found = root.querySelector(selector);
+    let found = root.querySelector ? root.querySelector(selector) : null;
     if (found) return found;
-    const children = root.querySelectorAll('*');
+    const children = root.querySelectorAll ? root.querySelectorAll('*') : [];
     for (const child of children) {
         if (child.shadowRoot) {
             found = querySelectorDeep(selector, child.shadowRoot);
@@ -677,7 +617,10 @@ let loginAttempts = 0;
 
 function tryAutoLogin() {
     if (loggedIn) return;
-    injectKioskStyles();
+    if (window.location.pathname.includes('/lovelace')) {
+        loggedIn = true;
+        return;
+    }
 
     // Check for Trusted Networks user button (e.g. 'kiosk') and auto-click it
     const listItems = queryAllDeep('mwc-list-item, ha-card, [role="button"], button, paper-item, a, .user-list-item');
@@ -740,14 +683,14 @@ function tryAutoLogin() {
     }
 }
 
-// Continuously poll until logged in or element is authenticated
+// Poll periodically for login form; automatically stops once logged in or after 30s
 const loginInterval = setInterval(() => {
     tryAutoLogin();
     if (loggedIn) clearInterval(loginInterval);
-}, 400);
-
-const observer = new MutationObserver(() => tryAutoLogin());
-observer.observe(document.documentElement, { childList: true, subtree: true });
+}, 600);
+setTimeout(() => {
+    if (loginInterval) clearInterval(loginInterval);
+}, 30000);
 
 // ==============================================================================
 // 4. In-Browser Admin Modal & Temporary Unlock System (Ctrl+Alt+A or Ctrl+Alt+K)
@@ -833,18 +776,69 @@ function removeUnlockFloatingPill() {
     if (pill) pill.remove();
 }
 
+function showWorkstationFloatingBar() {
+    if (document.getElementById('rpi-kiosk-workstation-bar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'rpi-kiosk-workstation-bar';
+    bar.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 18px;
+        z-index: 2147483646;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(56, 189, 248, 0.6);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+        border-radius: 30px;
+        padding: 6px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        color: #ffffff;
+        font-weight: 500;
+        user-select: none;
+    `;
+    bar.innerHTML = `
+        <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:#34d399; box-shadow:0 0 8px #34d399;"></span>
+        <span style="font-weight:600; color:#e2e8f0;">Admin Workstation <span style="font-size:11px; color:#38bdf8; font-weight:normal;">(Tabs Active)</span></span>
+        <button id="kiosk-ws-settings" style="background:#1e293b; border:1px solid #334155; color:#f1f5f9; padding:4px 10px; border-radius:14px; cursor:pointer; font-size:12px; font-weight:500;">⚙️ Settings</button>
+        <button id="kiosk-ws-lock" style="background:#dc2626; border:none; color:#ffffff; padding:4px 12px; border-radius:14px; cursor:pointer; font-size:12px; font-weight:600;">🔒 Lock Kiosk</button>
+    `;
+    document.body.appendChild(bar);
+
+    bar.querySelector('#kiosk-ws-settings').onclick = () => {
+        toggleAdminModal();
+    };
+    bar.querySelector('#kiosk-ws-lock').onclick = () => {
+        lockKioskNow();
+    };
+}
+
+function removeWorkstationFloatingBar() {
+    const bar = document.getElementById('rpi-kiosk-workstation-bar');
+    if (bar) bar.remove();
+}
+
 function checkAdminStatus() {
     fetch('http://127.0.0.1:8080/api/admin/status')
         .then(res => res.json())
         .then(data => {
-            if (data.unlocked && data.remaining_seconds > 0) {
+            if (data.workstation_mode) {
                 window.__kiosk_unlocked = true;
+                removeUnlockFloatingPill();
+                showWorkstationFloatingBar();
+            } else if (data.unlocked && data.remaining_seconds > 0) {
+                window.__kiosk_unlocked = true;
+                removeWorkstationFloatingBar();
                 unlockExpiresAt = Date.now() + (data.remaining_seconds * 1000);
                 showUnlockFloatingPill(data.remaining_seconds);
                 startClientCountdown();
             } else {
                 window.__kiosk_unlocked = false;
                 removeUnlockFloatingPill();
+                removeWorkstationFloatingBar();
             }
         })
         .catch(() => {});
@@ -871,15 +865,12 @@ function lockKioskNow() {
     window.__kiosk_unlocked = false;
     if (unlockCountdownTimer) clearInterval(unlockCountdownTimer);
     removeUnlockFloatingPill();
+    removeWorkstationFloatingBar();
     if (adminRoot) adminRoot.style.display = 'none';
 
-    fetch('http://127.0.0.1:8080/api/admin/lock', { method: 'POST' })
+    fetch('http://127.0.0.1:8080/api/admin/disable_workstation', { method: 'POST' })
         .then(() => {
-            console.log('[Kiosk] Re-locked successfully.');
-            const dashUrl = '__DASHBOARD_URL__';
-            if (dashUrl && !window.location.href.startsWith(dashUrl.split('?')[0])) {
-                window.location.href = dashUrl;
-            }
+            fetch('http://127.0.0.1:8080/api/admin/lock', { method: 'POST' });
         })
         .catch(e => console.error(e));
 }
@@ -1329,42 +1320,57 @@ fi
 
 sed -i "s|__DASHBOARD_URL__|$DASHBOARD_URL|g" "$EXT_DIR/content.js"
 
-# Clean up any restored multi-tab sessions so Chromium strictly opens in single app mode
-rm -rf "$HOME/.config/chromium/Default/Sessions" 2>/dev/null || true
-rm -rf "$HOME/.config/chromium/Default/Current Session" 2>/dev/null || true
-rm -rf "$HOME/.config/chromium/Default/Current Tabs" 2>/dev/null || true
-rm -rf "$HOME/.config/chromium/Default/Last Session" 2>/dev/null || true
-rm -rf "$HOME/.config/chromium/Default/Last Tabs" 2>/dev/null || true
-if [ -f "$HOME/.config/chromium/Default/Preferences" ]; then
-    sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
-    sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
-fi
-
 EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR" "--remote-debugging-port=9222" "--remote-allow-origins=*")
 
-# Launch Chromium locked in Standalone Application mode (--app disables tab strips and Ctrl+T shortcuts)
-exec "$CHROMIUM_BIN" \
-  "${EXTRA_CHROME_FLAGS[@]}" \
-  --app="$DASHBOARD_URL" \
-  --start-fullscreen \
-  --noerrdialogs \
-  --disable-infobars \
-  --no-first-run \
-  --check-for-update-interval=31536000 \
-  --disable-pinch \
-  --overscroll-history-navigation=0 \
-  --enable-features=OverlayScrollbar \
-  --disable-features=Translate,OptimizationHints,MediaRouter \
-  --disable-session-crashed-bubble \
-  --disable-context-menu \
-  --disable-component-update \
-  --disable-background-networking \
-  --disable-domain-reliability \
-  --disable-sync \
-  --no-default-browser-check \
-  --autoplay-policy=no-user-gesture-required \
-  --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
-  --password-store=basic \
-  --disk-cache-dir=/tmp/chromium-cache \
-  --enable-gpu-rasterization \
-  --enable-zero-copy
+if [ -f "/tmp/kiosk-admin-workstation" ]; then
+    echo "Starting Chromium in Admin Workstation Mode (macOS Desktop)..."
+    exec "$CHROMIUM_BIN" \
+      "${EXTRA_CHROME_FLAGS[@]}" \
+      --start-maximized \
+      --noerrdialogs \
+      --disable-infobars \
+      --no-first-run \
+      --password-store=basic \
+      --disk-cache-dir=/tmp/chromium-cache \
+      --enable-gpu-rasterization \
+      --enable-zero-copy \
+      "http://127.0.0.1:8080/desktop"
+else
+    # Clean up any restored multi-tab sessions so Chromium strictly opens in single app mode
+    rm -rf "$HOME/.config/chromium/Default/Sessions" 2>/dev/null || true
+    rm -rf "$HOME/.config/chromium/Default/Current Session" 2>/dev/null || true
+    rm -rf "$HOME/.config/chromium/Default/Current Tabs" 2>/dev/null || true
+    rm -rf "$HOME/.config/chromium/Default/Last Session" 2>/dev/null || true
+    rm -rf "$HOME/.config/chromium/Default/Last Tabs" 2>/dev/null || true
+    if [ -f "$HOME/.config/chromium/Default/Preferences" ]; then
+        sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
+        sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
+    fi
+
+    # Launch Chromium locked in Standalone Application mode (--app disables tab strips and Ctrl+T shortcuts)
+    exec "$CHROMIUM_BIN" \
+      "${EXTRA_CHROME_FLAGS[@]}" \
+      --app="$DASHBOARD_URL" \
+      --start-fullscreen \
+      --noerrdialogs \
+      --disable-infobars \
+      --no-first-run \
+      --check-for-update-interval=31536000 \
+      --disable-pinch \
+      --overscroll-history-navigation=0 \
+      --enable-features=OverlayScrollbar \
+      --disable-features=Translate,OptimizationHints,MediaRouter \
+      --disable-session-crashed-bubble \
+      --disable-context-menu \
+      --disable-component-update \
+      --disable-background-networking \
+      --disable-domain-reliability \
+      --disable-sync \
+      --no-default-browser-check \
+      --autoplay-policy=no-user-gesture-required \
+      --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
+      --password-store=basic \
+      --disk-cache-dir=/tmp/chromium-cache \
+      --enable-gpu-rasterization \
+      --enable-zero-copy
+fi

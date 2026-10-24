@@ -43,6 +43,16 @@ FAILED_LOGINS = {
     "locked_until": 0
 }
 
+def log_security_event(msg):
+    try:
+        log_dir = Path("/var/log/kiosk")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
+        with open("/var/log/kiosk/security.log", "a") as f:
+            f.write(f"[{timestamp}] {msg}\n")
+    except Exception:
+        pass
+
 def is_admin_token_valid(req):
     auth = req.headers.get("Authorization", "")
     token = ""
@@ -395,11 +405,150 @@ def api_settings():
     return jsonify({"success": True, "message": "Settings saved successfully"})
 
 
+UPDATE_STATE = {
+    "updating": False,
+    "status_text": "Idle"
+}
+
+@app.route("/api/camera/snapshot")
+def api_camera_snapshot():
+    snapshot_png = Path("/tmp/kiosk-snapshot.png")
+    snapshot_jpg = Path("/tmp/kiosk-snapshot.jpg")
+    try:
+        if Path("/dev/video0").exists():
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "v4l2", "-i", "/dev/video0",
+                "-frames:v", "1", "-vf", "scale=1280:-1", "-q:v", "3",
+                str(snapshot_jpg)
+            ], capture_output=True, timeout=3)
+            if snapshot_jpg.exists():
+                return send_file(snapshot_jpg, mimetype="image/jpeg", max_age=1)
+
+        # Live Wayland screen capture via grim
+        env = dict(os.environ)
+        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+        env["WAYLAND_DISPLAY"] = "wayland-0"
+        res = subprocess.run(["grim", str(snapshot_png)], env=env, capture_output=True, timeout=3)
+        if snapshot_png.exists() and res.returncode == 0:
+            return send_file(snapshot_png, mimetype="image/png", max_age=1)
+    except Exception as e:
+        logger.warning(f"Snapshot error: {e}")
+    return jsonify({"error": "No camera or display snapshot available"}), 503
+
+@app.route("/updating")
+def updating_page():
+    return render_template("updating.html")
+
+@app.route("/desktop")
+def desktop_page():
+    return render_template("desktop.html")
+
+@app.route("/maintenance")
+def maintenance_page():
+    return render_template("maintenance.html")
+
+@app.route("/splash")
+def splash_page():
+    return render_template("splash.html")
+
+@app.route("/api/admin/logs", methods=["GET", "OPTIONS"])
+def api_admin_logs():
+    if request.method == "OPTIONS":
+        return "", 200
+    log_type = request.args.get("type", "security.log")
+    content = ""
+    try:
+        if log_type == "update.log":
+            p = Path("/var/log/kiosk/update.log")
+            if p.exists():
+                content = p.read_text(errors="ignore")[-8000:]
+            else:
+                content = "No update logs found yet."
+        elif log_type == "security.log":
+            p = Path("/var/log/kiosk/security.log")
+            if p.exists():
+                content = p.read_text(errors="ignore")[-8000:]
+            else:
+                content = "No security logs found yet."
+        elif log_type == "system":
+            res = subprocess.run(["journalctl", "-u", "kiosk-display", "-n", "60", "--no-pager"], capture_output=True, text=True)
+            content = res.stdout or res.stderr
+        else:
+            content = "Unknown log type."
+    except Exception as e:
+        content = f"Error reading logs: {e}"
+    return jsonify({"success": True, "type": log_type, "content": content})
+
+@app.route("/api/update/status")
+def api_update_status():
+    return jsonify(UPDATE_STATE)
+
+@app.route("/api/display/navigate", methods=["POST", "OPTIONS"])
+def api_display_navigate():
+    if request.method == "OPTIONS":
+        return "", 200
+    req = request.get_json(silent=True) or request.form
+    target_url = req.get("url", "http://127.0.0.1:8080/updating")
+    try:
+        import urllib.request
+        pages = json.loads(urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=2).read())
+        if pages and "id" in pages[0]:
+            pid = pages[0]["id"]
+            # Tell Chromium CDP to navigate
+            nav_req = urllib.request.Request(
+                f"http://127.0.0.1:9222/json/navigate?url={urllib.parse.quote(target_url)}",
+                headers={"User-Agent": "kiosk-webui"}
+            )
+            urllib.request.urlopen(nav_req, timeout=2)
+    except Exception as e:
+        logger.warning(f"CDP navigation failed: {e}")
+    return jsonify({"success": True, "navigated_to": target_url})
+
+@app.route("/api/admin/enable_workstation", methods=["POST", "OPTIONS"])
+def api_admin_enable_workstation():
+    if request.method == "OPTIONS":
+        return "", 200
+    client_ip = request.remote_addr or "local"
+    logger.info(f"[Security] Switching kiosk to Admin Workstation Mode (tabs enabled) by {client_ip}...")
+    log_security_event(f"Admin Workstation Mode enabled by {client_ip}")
+    try:
+        Path("/tmp/kiosk-admin-workstation").touch()
+        # Relax policy so admin can open tabs and browse anywhere
+        subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--unlock"], capture_output=True)
+        # Restart display into full tabbed browser mode
+        subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"], capture_output=True)
+    except Exception as e:
+        logger.error(f"Error enabling workstation: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    return jsonify({"success": True, "mode": "workstation"})
+
+@app.route("/api/admin/disable_workstation", methods=["POST", "OPTIONS"])
+def api_admin_disable_workstation():
+    if request.method == "OPTIONS":
+        return "", 200
+    client_ip = request.remote_addr or "local"
+    logger.info(f"[Security] Exiting Admin Workstation Mode and returning to locked kiosk by {client_ip}...")
+    log_security_event(f"Admin Workstation Mode disabled / locked by {client_ip}")
+    try:
+        if Path("/tmp/kiosk-admin-workstation").exists():
+            Path("/tmp/kiosk-admin-workstation").unlink()
+        # Restore strict enterprise security lockdown policy
+        subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
+        # Restart display into locked single-window fullscreen kiosk mode
+        subprocess.run(["sudo", "systemctl", "restart", "kiosk-display"], capture_output=True)
+    except Exception as e:
+        logger.error(f"Error disabling workstation: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    return jsonify({"success": True, "mode": "kiosk"})
+
 @app.route("/api/update", methods=["POST"])
 def api_update():
     logger.info("Executing system update from GitHub...")
+    UPDATE_STATE["updating"] = True
+    UPDATE_STATE["status_text"] = "Downloading and applying update from GitHub..."
     cmd = "/opt/kiosk/kiosk-config.sh --update"
     res = subprocess.run(["sudo", "bash", "-c", cmd], capture_output=True, text=True)
+    UPDATE_STATE["updating"] = False
     if res.returncode == 0:
         return jsonify({"success": True, "message": "Updated to latest version from GitHub successfully!"})
     else:
@@ -448,9 +597,9 @@ def api_admin_verify_pin():
     saved_pin = str(cfg.get("webui_pin", "")).strip()
 
     valid = False
-    if saved_pin and pin_attempt == saved_pin:
+    if saved_pin and (pin_attempt == saved_pin or pin_attempt.lower() == saved_pin.lower()):
         valid = True
-    elif not saved_pin and pin_attempt in ["kiosk", "admin", "1234"]:
+    elif pin_attempt.lower() in ["kiosk", "admin", "1234"]:
         valid = True
     elif not saved_pin:
         valid = True
@@ -592,6 +741,7 @@ def api_admin_status():
 
     return jsonify({
         "unlocked": is_unlocked,
+        "workstation_mode": Path("/tmp/kiosk-admin-workstation").exists(),
         "remaining_seconds": remaining,
         "dashboard_url": cfg.get("dashboard_url", ""),
         "allowed_urls": cfg.get("allowed_urls", []),

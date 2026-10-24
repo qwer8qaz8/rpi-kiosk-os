@@ -193,14 +193,30 @@ remove_security_policy() {
 
 update_from_github() {
   require_root
-  echo -e "\n${CYAN}Checking for updates from GitHub (qwer8qaz8/rpi-kiosk-os)...${NC}"
+  mkdir -p /var/log/kiosk 2>/dev/null || true
+  chown root:adm /var/log/kiosk 2>/dev/null || true
+  chmod 775 /var/log/kiosk 2>/dev/null || true
+  local log_file="/var/log/kiosk/update.log"
+  echo "=== Update started at $(date -u '+%Y-%m-%d %H:%M:%S UTC') ===" >> "$log_file"
+
+  # Direct on-screen display to show pretty update splash screen
+  curl -s -X POST http://127.0.0.1:8080/api/display/navigate -H "Content-Type: application/json" -d '{"url":"http://127.0.0.1:8080/updating"}' >/dev/null 2>&1 || true
+
+  echo -e "\n${CYAN}==================================================================${NC}"
+  echo -e "${BOLD}Updating Raspberry Pi Kiosk OS from GitHub...${NC}"
+  echo -e "${YELLOW}Displaying updating splash screen on kiosk display.${NC}"
+  echo -e "Detailed persistent logs written to: ${BOLD}$log_file${NC}"
+  echo -e "${CYAN}==================================================================${NC}"
+
   TMP_DIR=$(mktemp -d)
-  if git clone --depth 1 "$REPO_URL" "$TMP_DIR" 2>/dev/null; then
-    echo -e "${GREEN}Downloaded latest release.${NC}"
-    # Install any newly added dependencies (gammastep, ddcutil, grim, ffmpeg, avahi-daemon, libnss-mdns)
-    apt-get update -y 2>/dev/null || true
-    apt-get install -y --no-install-recommends gammastep ddcutil grim ffmpeg avahi-daemon libnss-mdns avahi-utils 2>/dev/null || true
-    systemctl enable --now avahi-daemon 2>/dev/null || true
+  if git clone --depth 1 "$REPO_URL" "$TMP_DIR" >> "$log_file" 2>&1; then
+    echo -e "${GREEN}✓ Downloaded latest release.${NC}"
+    echo "[$(date '+%H:%M:%S')] Downloaded latest release from GitHub" >> "$log_file"
+
+    # Install any newly added dependencies silently with logging
+    apt-get update -y >> "$log_file" 2>&1 || true
+    apt-get install -y --no-install-recommends gammastep ddcutil grim ffmpeg avahi-daemon libnss-mdns avahi-utils >> "$log_file" 2>&1 || true
+    systemctl enable --now avahi-daemon >> "$log_file" 2>&1 || true
 
     cp --remove-destination -r "$TMP_DIR/kiosk/"* /opt/kiosk/
     cp --remove-destination "$TMP_DIR/kiosk-config.sh" /opt/kiosk/ 2>/dev/null || true
@@ -210,22 +226,39 @@ update_from_github() {
     ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk-config 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk 2>/dev/null || true
+
+    # Create logrotate rule for /var/log/kiosk
+    cat << 'EOF_LOGROTATE' > /etc/logrotate.d/kiosk
+/var/log/kiosk/*.log {
+    monthly
+    rotate 12
+    compress
+    missingok
+    notifempty
+    create 0640 root adm
+}
+EOF_LOGROTATE
     
     # Refresh security policies
-    apply_security_policy
+    apply_security_policy >> "$log_file" 2>&1
     
-    systemctl daemon-reload
-    systemctl enable kiosk-autoupdate.timer 2>/dev/null || true
-    systemctl start kiosk-autoupdate.timer 2>/dev/null || true
-    systemctl restart kiosk-webui 2>/dev/null || true
-    systemctl restart kiosk-mqtt 2>/dev/null || true
-    systemctl restart kiosk-display 2>/dev/null || true
+    systemctl daemon-reload >> "$log_file" 2>&1
+    systemctl enable kiosk-autoupdate.timer >> "$log_file" 2>&1 || true
+    systemctl start kiosk-autoupdate.timer >> "$log_file" 2>&1 || true
+    systemctl restart kiosk-webui >> "$log_file" 2>&1 || true
+    systemctl restart kiosk-mqtt >> "$log_file" 2>&1 || true
+    
     rm -rf "$TMP_DIR"
-    echo -e "${GREEN}${BOLD}Kiosk successfully updated to the latest version!${NC}\n"
+    echo "=== Update successfully completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC') ===" >> "$log_file"
+    echo -e "${GREEN}${BOLD}✓ Kiosk successfully updated! Rebooting system to apply updates cleanly...${NC}\n"
+    sleep 2
+    systemctl reboot 2>/dev/null || reboot 2>/dev/null || true
     exit 0
   else
     echo -e "${RED}Failed to reach GitHub. Check your internet connection.${NC}"
+    echo "[$(date '+%H:%M:%S')] ERROR: Failed to clone $REPO_URL" >> "$log_file"
     rm -rf "$TMP_DIR"
+    systemctl restart kiosk-display 2>/dev/null || true
     return 1
   fi
 }

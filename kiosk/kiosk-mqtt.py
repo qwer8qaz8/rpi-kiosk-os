@@ -386,6 +386,20 @@ class KioskMQTTDaemon:
             f"{self.prefix}/sensor/{self.device_id}/ip/config",
             json.dumps(ip_disc), qos=1, retain=True
         )
+
+        # 8. Live Camera / Screen Snapshot
+        cam_disc = {
+            "name": f"{self.device_name} Camera",
+            "unique_id": f"{self.device_id}_camera",
+            "topic": f"{self.base_topic}/camera/image",
+            "availability_topic": self.status_topic,
+            "icon": "mdi:camera",
+            "device": device_info
+        }
+        self.client.publish(
+            f"{self.prefix}/camera/{self.device_id}/camera/config",
+            json.dumps(cam_disc), qos=1, retain=True
+        )
         logger.info("Published Home Assistant MQTT discovery payloads.")
 
     def publish_states(self):
@@ -411,6 +425,14 @@ class KioskMQTTDaemon:
             "memory_usage": get_memory_usage()
         }
         self.client.publish(f"{self.base_topic}/system/state", json.dumps(telemetry), qos=1, retain=True)
+
+        try:
+            import urllib.request
+            snap_data = urllib.request.urlopen("http://127.0.0.1:8080/api/camera/snapshot", timeout=2).read()
+            if snap_data:
+                self.client.publish(f"{self.base_topic}/camera/image", snap_data, qos=0, retain=True)
+        except Exception:
+            pass
 
     def run(self):
         while not self.stop_event.is_set():

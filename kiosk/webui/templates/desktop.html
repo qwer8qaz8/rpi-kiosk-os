@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Desktop — KioskOS</title>
+  <style>
+    :root {
+      --mac-bg: #0d1117;
+      --menu-bg: rgba(22, 27, 34, 0.85);
+      --dock-bg: rgba(30, 41, 59, 0.65);
+      --dock-border: rgba(255, 255, 255, 0.18);
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --accent: #38bdf8;
+      --card-bg: rgba(24, 32, 47, 0.95);
+      --card-border: rgba(255, 255, 255, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at 20% 15%, #1e1b4b 0%, #0f172a 50%, #030712 100%);
+      color: var(--text-main);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    /* ==========================================================================
+       TOP MACOS MENU BAR
+       ========================================================================== */
+    .menu-bar {
+      height: 28px;
+      background: var(--menu-bg);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 10000;
+    }
+
+    .menu-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .apple-icon {
+      font-size: 15px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .apple-icon:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .app-title {
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .menu-items {
+      display: flex;
+      gap: 14px;
+      color: #cbd5e1;
+    }
+    .menu-item {
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .menu-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+
+    .status-pill {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 3px 8px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .status-dot-green {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 6px #10b981;
+    }
+
+    .clock {
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-emergency-lock {
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-emergency-lock:hover {
+      background: #b91c1c;
+      transform: scale(1.02);
+    }
+
+    /* Apple Dropdown Menu */
+    .dropdown-menu {
+      position: absolute;
+      top: 30px;
+      left: 10px;
+      background: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 5px 0;
+      min-width: 190px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+      display: none;
+      z-index: 10001;
+    }
+    .dropdown-item {
+      padding: 6px 14px;
+      font-size: 13px;
+      color: #f1f5f9;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      transition: background 0.1s;
+    }
+    .dropdown-item:hover {
+      background: #2563eb;
+      color: #fff;
+    }
+    .dropdown-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 4px 0;
+    }
+
+    /* ==========================================================================
+       DESKTOP WORKSPACE
+       ========================================================================== */
+    .desktop-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Desktop Wallpaper Watermark */
+    .desktop-watermark {
+      position: absolute;
+      bottom: 110px;
+      right: 28px;
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.2);
+      pointer-events: none;
+      text-align: right;
+    }
+
+    /* ==========================================================================
+       MACOS WINDOWS
+       ========================================================================== */
+    .window {
+      position: absolute;
+      background: var(--card-bg);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.06);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 320px;
+      min-height: 220px;
+      z-index: 100;
+    }
+
+    .window-titlebar {
+      height: 36px;
+      background: rgba(15, 23, 42, 0.8);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      cursor: move;
+      position: relative;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .traffic-light {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: transparent;
+      transition: opacity 0.15s;
+    }
+    .traffic-light:hover {
+      color: rgba(0, 0, 0, 0.6);
+    }
+    .btn-close { background: #ff5f56; border: 1px solid #e0443e; }
+    .btn-minimize { background: #ffbd2e; border: 1px solid #dea123; }
+    .btn-maximize { background: #27c93f; border: 1px solid #1aab29; }
+
+    .window-title {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .window-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      color: #e2e8f0;
+      font-size: 13px;
+    }
+
+    /* Window Specific Styles */
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .form-input {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid #334155;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+    .form-input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .btn {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+
+    .log-box {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #93c5fd;
+      max-height: 280px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ==========================================================================
+       MACOS FLOATING DOCK
+       ========================================================================== */
+    .dock-container {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10000;
+    }
+
+    .dock {
+      background: var(--dock-bg);
+      backdrop-filter: blur(30px) saturate(180%);
+      -webkit-backdrop-filter: blur(30px) saturate(180%);
+      border: 1px solid var(--dock-border);
+      border-radius: 26px;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.08);
+    }
+
+    .dock-item {
+      position: relative;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    .dock-item:hover {
+      transform: scale(1.2) translateY(-8px);
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Tooltip */
+    .dock-item::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      top: -34px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .dock-item:hover::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .dock-divider {
+      width: 1px;
+      height: 38px;
+      background: rgba(255, 255, 255, 0.15);
+      margin: 0 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP MACOS MENU BAR -->
+  <header class="menu-bar">
+    <div class="menu-left">
+      <div class="apple-icon" id="apple-btn"></div>
+      <span class="app-title">KioskOS</span>
+      <div class="menu-items">
+        <span class="menu-item" onclick="openWindow('settings-window')">Settings</span>
+        <span class="menu-item" onclick="openWindow('logs-window')">Logs</span>
+        <span class="menu-item" onclick="openWindow('browser-window')">Browser</span>
+        <span class="menu-item" onclick="openWindow('update-window')">Update</span>
+      </div>
+    </div>
+
+    <!-- Apple Menu Dropdown -->
+    <div class="dropdown-menu" id="apple-dropdown">
+      <div class="dropdown-item" onclick="alert('Raspberry Pi Kiosk OS\nVersion 1.2.0 (macOS Admin Workstation Edition)\nProtected Linux Architecture')">About This Kiosk</div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" onclick="openWindow('settings-window')">System Preferences...</div>
+      <div class="dropdown-item" onclick="openWindow('logs-window')">Console & System Logs</div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" onclick="toggleScreenPower()">Display Sleep</div>
+      <div class="dropdown-item" onclick="reloadKioskDisplay()">Reload Kiosk</div>
+      <div class="dropdown-divider"></div>
+      <div class="dropdown-item" onclick="emergencyLock()">Lock Screen (Return to Kiosk)</div>
+      <div class="dropdown-item" onclick="rebootPi()" style="color:#f87171;">Reboot Raspberry Pi...</div>
+    </div>
+
+    <div class="menu-right">
+      <div class="status-pill">
+        <div class="status-dot-green"></div>
+        <span id="ip-display">Connected</span>
+      </div>
+      <div class="clock" id="live-clock">12:00 PM</div>
+      <button class="btn-emergency-lock" onclick="emergencyLock()" title="Instantly Lock & Return to Kiosk (Ctrl+Alt+Shift+L)">
+        🔒 Lock Kiosk
+      </button>
+    </div>
+  </header>
+
+  <!-- DESKTOP WORKSPACE -->
+  <main class="desktop-area" id="desktop">
+
+    <div class="desktop-watermark">
+      <strong>KioskOS Admin Workstation</strong><br>
+      Press <kbd>Ctrl+Alt+Shift+L</kbd> to emergency lock
+    </div>
+
+    <!-- 1. SETTINGS APP WINDOW -->
+    <div class="window" id="settings-window" style="top: 50px; left: 80px; width: 480px; height: 520px;">
+      <div class="window-titlebar" onmousedown="startDrag(event, 'settings-window')">
+        <div class="window-controls">
+          <div class="traffic-light btn-close" onclick="closeWindow('settings-window')">✕</div>
+          <div class="traffic-light btn-minimize" onclick="minimizeWindow('settings-window')">−</div>
+          <div class="traffic-light btn-maximize" onclick="maximizeWindow('settings-window')">+</div>
+        </div>
+        <div class="window-title">⚙️ Kiosk Preferences</div>
+      </div>
+      <div class="window-body">
+        <div class="form-group">
+          <label class="form-label">Kiosk Dashboard URL</label>
+          <input type="text" class="form-input" id="cfg-url" placeholder="http://homeassistant.local:8123" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Display Brightness (<span id="bright-val">100%</span>)</label>
+          <input type="range" style="width:100%;" min="10" max="100" id="cfg-bright" value="100" oninput="document.getElementById('bright-val').textContent = this.value + '%'" onchange="setBrightness(this.value)" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Allowed Domains / IPs (Enterprise Allowlist)</label>
+          <input type="text" class="form-input" id="cfg-new-allow" placeholder="e.g. google.com or 192.168.1.50:8000" />
+          <div class="btn-row" style="margin-top:6px;">
+            <button class="btn btn-secondary" onclick="addAllowedUrl()">+ Add to Allowlist</button>
+          </div>
+          <div id="allow-list" style="margin-top:8px; max-height:80px; overflow-y:auto; font-size:12px; font-family:monospace; color:#93c5fd;"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Change Administrator Password / PIN</label>
+          <input type="password" class="form-input" id="cfg-pin" placeholder="Enter new password (min 4 chars)" />
+          <div class="btn-row" style="margin-top:6px;">
+            <button class="btn btn-secondary" onclick="changePin()">Update Password</button>
+          </div>
+        </div>
+
+        <div class="btn-row" style="margin-top: 18px; border-top:1px solid #1e293b; padding-top:14px;">
+          <button class="btn btn-primary" onclick="saveSettings()">Save Preferences</button>
+          <button class="btn btn-secondary" onclick="reloadKioskDisplay()">🔁 Reload Display</button>
+          <button class="btn btn-danger" onclick="rebootPi()">🔄 Reboot Pi</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. CONSOLE & LOGS WINDOW -->
+    <div class="window" id="logs-window" style="top: 70px; left: 340px; width: 560px; height: 420px; display: none;">
+      <div class="window-titlebar" onmousedown="startDrag(event, 'logs-window')">
+        <div class="window-controls">
+          <div class="traffic-light btn-close" onclick="closeWindow('logs-window')">✕</div>
+          <div class="traffic-light btn-minimize" onclick="minimizeWindow('logs-window')">−</div>
+          <div class="traffic-light btn-maximize" onclick="maximizeWindow('logs-window')">+</div>
+        </div>
+        <div class="window-title">💻 Console & Persistent Security Logs</div>
+      </div>
+      <div class="window-body">
+        <p style="color:#94a3b8; font-size:12px; margin-bottom:8px;">
+          Logs stored in <code>/var/log/kiosk/</code> (Root-protected, preserved across reboots):
+        </p>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn btn-secondary" onclick="fetchLog('security.log')">Security Log</button>
+          <button class="btn btn-secondary" onclick="fetchLog('update.log')">Update Log</button>
+          <button class="btn btn-secondary" onclick="fetchLog('system')">Display Journal</button>
+        </div>
+        <div class="log-box" id="log-content">Loading logs...</div>
+      </div>
+    </div>
+
+    <!-- 3. CHROMIUM WORKSTATION WINDOW -->
+    <div class="window" id="browser-window" style="top: 40px; left: 160px; width: 720px; height: 500px; display: none;">
+      <div class="window-titlebar" onmousedown="startDrag(event, 'browser-window')">
+        <div class="window-controls">
+          <div class="traffic-light btn-close" onclick="closeWindow('browser-window')">✕</div>
+          <div class="traffic-light btn-minimize" onclick="minimizeWindow('browser-window')">−</div>
+          <div class="traffic-light btn-maximize" onclick="maximizeWindow('browser-window')">+</div>
+        </div>
+        <div class="window-title">🌐 Chromium Web Browser</div>
+      </div>
+      <div class="window-body" style="padding:0; display:flex; flex-direction:column;">
+        <div style="background:#0f172a; padding:8px 12px; display:flex; gap:8px; border-bottom:1px solid #1e293b;">
+          <input type="text" id="browser-url-input" class="form-input" style="padding:6px 10px; font-size:12px;" value="http://homeassistant.local:8123" />
+          <button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" onclick="loadBrowserUrl()">Go</button>
+          <button class="btn btn-secondary" style="padding:6px 10px; font-size:12px;" onclick="window.open(document.getElementById('browser-url-input').value, '_blank')">New Tab ↗</button>
+        </div>
+        <iframe id="browser-frame" src="about:blank" style="flex:1; width:100%; border:none; background:#fff;"></iframe>
+      </div>
+    </div>
+
+    <!-- 4. SOFTWARE UPDATER WINDOW -->
+    <div class="window" id="update-window" style="top: 100px; left: 240px; width: 440px; height: 320px; display: none;">
+      <div class="window-titlebar" onmousedown="startDrag(event, 'update-window')">
+        <div class="window-controls">
+          <div class="traffic-light btn-close" onclick="closeWindow('update-window')">✕</div>
+          <div class="traffic-light btn-minimize" onclick="minimizeWindow('update-window')">−</div>
+          <div class="traffic-light btn-maximize" onclick="maximizeWindow('update-window')">+</div>
+        </div>
+        <div class="window-title">🔄 Software Update</div>
+      </div>
+      <div class="window-body" style="text-align:center; padding:28px 20px;">
+        <div style="font-size:36px; margin-bottom:10px;">📦</div>
+        <h3 style="margin-bottom:6px;">Raspberry Pi Kiosk OS</h3>
+        <p style="color:#94a3b8; font-size:13px; margin-bottom:18px;">
+          Check and install updates directly from GitHub.<br>The system will display an update screen and reboot automatically.
+        </p>
+        <button class="btn btn-primary" style="padding:10px 24px; font-size:14px;" onclick="startSystemUpdate()">
+          Check & Install Updates Now
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- BOTTOM MACOS FLOATING DOCK -->
+  <div class="dock-container">
+    <nav class="dock">
+      <div class="dock-item" data-tooltip="Chromium Browser" onclick="openWindow('browser-window')">🌐</div>
+      <div class="dock-item" data-tooltip="Kiosk Settings" onclick="openWindow('settings-window')">⚙️</div>
+      <div class="dock-item" data-tooltip="Home Assistant" onclick="openHomeAssistant()">🏠</div>
+      <div class="dock-item" data-tooltip="Console & Logs" onclick="openWindow('logs-window')">💻</div>
+      <div class="dock-item" data-tooltip="Software Update" onclick="openWindow('update-window')">🔄</div>
+      <div class="dock-divider"></div>
+      <div class="dock-item" data-tooltip="Lock & Return to Kiosk" onclick="emergencyLock()" style="background:rgba(220, 38, 38, 0.25); border-color:rgba(220, 38, 38, 0.5);">🔒</div>
+    </nav>
+  </div>
+
+  <script>
+    // Live macOS Digital Clock
+    function updateClock() {
+      const now = new Date();
+      const options = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true };
+      document.getElementById('live-clock').textContent = now.toLocaleString('en-US', options).replace(/,/g, '');
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Apple Dropdown Menu Toggle
+    const appleBtn = document.getElementById('apple-btn');
+    const appleDropdown = document.getElementById('apple-dropdown');
+    appleBtn.onclick = (e) => {
+      e.stopPropagation();
+      appleDropdown.style.display = appleDropdown.style.display === 'block' ? 'none' : 'block';
+    };
+    document.addEventListener('click', () => {
+      appleDropdown.style.display = 'none';
+    });
+
+    // Window Management & Dragging
+    let activeDrag = null;
+    let dragOffset = { x: 0, y: 0 };
+    let highestZ = 200;
+
+    function bringToFront(winId) {
+      const el = document.getElementById(winId);
+      if (el) {
+        highestZ += 2;
+        el.style.zIndex = highestZ;
+      }
+    }
+
+    function openWindow(winId) {
+      const el = document.getElementById(winId);
+      if (el) {
+        el.style.display = 'flex';
+        bringToFront(winId);
+        if (winId === 'logs-window') fetchLog('security.log');
+      }
+    }
+
+    function closeWindow(winId) {
+      const el = document.getElementById(winId);
+      if (el) el.style.display = 'none';
+    }
+
+    function minimizeWindow(winId) {
+      closeWindow(winId);
+    }
+
+    function maximizeWindow(winId) {
+      const el = document.getElementById(winId);
+      if (!el) return;
+      if (el.dataset.maximized === 'true') {
+        el.style.top = el.dataset.origTop;
+        el.style.left = el.dataset.origLeft;
+        el.style.width = el.dataset.origWidth;
+        el.style.height = el.dataset.origHeight;
+        el.dataset.maximized = 'false';
+      } else {
+        el.dataset.origTop = el.style.top;
+        el.dataset.origLeft = el.style.left;
+        el.dataset.origWidth = el.style.width;
+        el.dataset.origHeight = el.style.height;
+        el.style.top = '36px';
+        el.style.left = '10px';
+        el.style.width = 'calc(100vw - 20px)';
+        el.style.height = 'calc(100vh - 120px)';
+        el.dataset.maximized = 'true';
+      }
+    }
+
+    function startDrag(e, winId) {
+      bringToFront(winId);
+      const el = document.getElementById(winId);
+      activeDrag = el;
+      dragOffset.x = e.clientX - el.offsetLeft;
+      dragOffset.y = e.clientY - el.offsetTop;
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('mouseup', endDrag);
+    }
+
+    function onDrag(e) {
+      if (!activeDrag) return;
+      activeDrag.style.left = (e.clientX - dragOffset.x) + 'px';
+      activeDrag.style.top = Math.max(28, (e.clientY - dragOffset.y)) + 'px';
+    }
+
+    function endDrag() {
+      activeDrag = null;
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', endDrag);
+    }
+
+    // Emergency Panic Lock (Ctrl+Alt+Shift+L)
+    function emergencyLock() {
+      fetch('/api/admin/disable_workstation', { method: 'POST' })
+        .then(() => {
+          window.location.href = '/';
+        })
+        .catch(() => {
+          window.location.href = '/';
+        });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'L' || e.key === 'l')) {
+        emergencyLock();
+      }
+    });
+
+    // Settings & State Sync
+    function loadStatus() {
+      fetch('/api/admin/status')
+        .then(r => r.json())
+        .then(data => {
+          if (data.local_ip) {
+            document.getElementById('ip-display').textContent = data.local_ip;
+          }
+          if (data.dashboard_url) {
+            document.getElementById('cfg-url').value = data.dashboard_url;
+            document.getElementById('browser-url-input').value = data.dashboard_url;
+          }
+          if (data.brightness) {
+            document.getElementById('cfg-bright').value = data.brightness;
+            document.getElementById('bright-val').textContent = data.brightness + '%';
+          }
+          renderAllowlist(data.allowed_urls || []);
+        })
+        .catch(() => {});
+    }
+
+    function renderAllowlist(urls) {
+      const box = document.getElementById('allow-list');
+      if (urls.length === 0) {
+        box.innerHTML = '<span style="color:#64748b;">No extra domains added.</span>';
+        return;
+      }
+      box.innerHTML = urls.map(u => `<div>• ${u}</div>`).join('');
+    }
+
+    function addAllowedUrl() {
+      const input = document.getElementById('cfg-new-allow');
+      const val = input.value.trim();
+      if (!val) return;
+      fetch('/api/admin/allowlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', url: val })
+      }).then(() => {
+        input.value = '';
+        loadStatus();
+      });
+    }
+
+    function setBrightness(val) {
+      fetch('/api/screen/brightness', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brightness: parseInt(val) })
+      });
+    }
+
+    function changePin() {
+      const pin = document.getElementById('cfg-pin').value.trim();
+      if (pin.length < 4) {
+        alert('Password / PIN must be at least 4 characters');
+        return;
+      }
+      fetch('/api/admin/change_pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_pin: pin })
+      }).then(r => r.json()).then(d => {
+        alert(d.success ? 'Password successfully updated!' : 'Error: ' + d.error);
+        document.getElementById('cfg-pin').value = '';
+      });
+    }
+
+    function saveSettings() {
+      const url = document.getElementById('cfg-url').value.trim();
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dashboard_url: url })
+      }).then(() => alert('Settings saved successfully!'));
+    }
+
+    function toggleScreenPower() {
+      fetch('/api/screen/power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: 'toggle' })
+      });
+    }
+
+    function reloadKioskDisplay() {
+      fetch('/api/reload', { method: 'POST' });
+    }
+
+    function rebootPi() {
+      if (confirm('Reboot the Raspberry Pi now?')) {
+        fetch('/api/reboot', { method: 'POST' })
+          .then(() => alert('Reboot command sent.'));
+      }
+    }
+
+    function openHomeAssistant() {
+      const url = document.getElementById('cfg-url').value || 'http://homeassistant.local:8123';
+      window.open(url, '_blank');
+    }
+
+    function loadBrowserUrl() {
+      const url = document.getElementById('browser-url-input').value;
+      document.getElementById('browser-frame').src = url;
+    }
+
+    function fetchLog(logType) {
+      const box = document.getElementById('log-content');
+      box.textContent = 'Loading ' + logType + '...';
+      fetch('/api/admin/logs?type=' + logType)
+        .then(r => r.json())
+        .then(d => {
+          box.textContent = d.content || '(Log file is empty)';
+        })
+        .catch(e => {
+          box.textContent = 'Error loading log: ' + e;
+        });
+    }
+
+    function startSystemUpdate() {
+      if (confirm('Install update from GitHub and reboot the Raspberry Pi?')) {
+        fetch('/api/update', { method: 'POST' });
+        window.location.href = '/updating';
+      }
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>
