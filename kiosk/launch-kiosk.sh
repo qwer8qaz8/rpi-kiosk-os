@@ -247,10 +247,54 @@ cat << 'EOF_EXT_JS' > "$EXT_DIR/content.js"
 window.__kiosk_unlocked = false;
 let unlockCountdownTimer = null;
 let unlockExpiresAt = 0;
+let currentAdminToken = null;
+let adminInactivityTimer = null;
 
-// 1. Block keyboard shortcuts (Ctrl+T, Ctrl+N, Ctrl+W, F1-F12, zoom, etc.) and right-click
+function resetAdminInactivity() {
+    if (adminInactivityTimer) clearTimeout(adminInactivityTimer);
+    if (adminRoot && adminRoot.style.display !== 'none') {
+        adminInactivityTimer = setTimeout(() => {
+            console.log('[Kiosk Security] Admin auto-logout due to 60s inactivity.');
+            adminAuthenticated = false;
+            currentAdminToken = null;
+            if (adminRoot) adminRoot.style.display = 'none';
+        }, 60000); // 60 seconds auto-logout
+    }
+}
+
+// 1. Advanced Keyboard Shortcuts & Lockdown Handler
 window.addEventListener('keydown', function(e) {
-    // Secret Admin Shortcut: Ctrl+Alt+A or Ctrl+Alt+K
+    // A) EMERGENCY PANIC LOCK: Ctrl+Alt+Shift+L or Ctrl+Alt+Shift+Q
+    if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'L' || e.key === 'l' || e.key === 'Q' || e.key === 'q')) {
+        e.preventDefault();
+        e.stopPropagation();
+        lockKioskNow();
+        return false;
+    }
+
+    // B) QUICK REBOOT SHORTCUT: Ctrl+Alt+Shift+R
+    if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (confirm('Reboot Raspberry Pi system immediately?')) {
+            fetch('http://127.0.0.1:8080/api/reboot', { method: 'POST' });
+        }
+        return false;
+    }
+
+    // C) QUICK SCREEN TOGGLE: Ctrl+Alt+Shift+B
+    if (e.ctrlKey && e.altKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+        e.preventDefault();
+        e.stopPropagation();
+        fetch('http://127.0.0.1:8080/api/screen/power', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: 'toggle' })
+        });
+        return false;
+    }
+
+    // D) TOGGLE ADMIN MODAL: Ctrl+Alt+A or Ctrl+Alt+K
     if (e.ctrlKey && e.altKey && (e.key === 'a' || e.key === 'A' || e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         e.stopPropagation();
@@ -258,11 +302,45 @@ window.addEventListener('keydown', function(e) {
         return false;
     }
 
-    // If temporarily unlocked, allow all navigation and shortcuts
+    // If Admin Modal is open, handle in-admin rapid hotkeys
+    if (adminRoot && adminRoot.style.display !== 'none' && adminAuthenticated) {
+        resetAdminInactivity();
+        const activeTag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toLowerCase() : '';
+        const isTyping = activeTag === 'input' || activeTag === 'textarea';
+        if (!isTyping) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                adminRoot.style.display = 'none';
+                return false;
+            } else if (e.key === '1') {
+                triggerUnlock(5); return false;
+            } else if (e.key === '2') {
+                triggerUnlock(10); return false;
+            } else if (e.key === '3') {
+                triggerUnlock(15); return false;
+            } else if (e.key === '4') {
+                triggerUnlock(30); return false;
+            } else if (e.key === 'l' || e.key === 'L') {
+                lockKioskNow(); return false;
+            } else if (e.key === 'r' || e.key === 'R') {
+                if (confirm('Reboot Raspberry Pi now?')) fetch('http://127.0.0.1:8080/api/reboot', { method: 'POST' });
+                return false;
+            } else if (e.key === 'd' || e.key === 'D') {
+                fetch('http://127.0.0.1:8080/api/reload', { method: 'POST' });
+                return false;
+            } else if (e.key === 't' || e.key === 'T') {
+                fetch('http://127.0.0.1:8080/api/screen/power', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: 'toggle' }) });
+                return false;
+            }
+        }
+    }
+
+    // If temporarily unlocked, permit standard browsing
     if (window.__kiosk_unlocked) {
         return true;
     }
 
+    // Strict Lockdown Mode: Block browser shortcuts, window opening, devtools, zoom
     if (e.ctrlKey || e.metaKey || e.altKey) {
         const key = e.key.toLowerCase();
         if (['t', 'n', 'w', 'o', 's', 'p', 'u', 'r', 'h', 'j', 'd', 'k', 'l', 'e', 'f', 'g', 'b', 'q'].includes(key) || e.key === 'Tab' || e.key === '-' || e.key === '=' || e.key === '+') {
@@ -285,6 +363,33 @@ window.addEventListener('contextmenu', function(e) {
         return false;
     }
 }, true);
+
+// Touchscreen 5-tap Secret Hot Corner (Top-Right 60x60px)
+let touchCornerTaps = 0;
+let touchCornerTimer = null;
+function setupHotCorner() {
+    if (document.getElementById('rpi-kiosk-hotcorner')) return;
+    const corner = document.createElement('div');
+    corner.id = 'rpi-kiosk-hotcorner';
+    corner.style.cssText = 'position:fixed; top:0; right:0; width:64px; height:64px; z-index:2147483640; background:transparent; cursor:default;';
+    const registerTap = () => {
+        touchCornerTaps++;
+        if (touchCornerTimer) clearTimeout(touchCornerTimer);
+        touchCornerTimer = setTimeout(() => { touchCornerTaps = 0; }, 2500);
+        if (touchCornerTaps >= 5) {
+            touchCornerTaps = 0;
+            toggleAdminModal();
+        }
+    };
+    corner.addEventListener('click', registerTap);
+    corner.addEventListener('touchstart', registerTap, { passive: true });
+    if (document.body) document.body.appendChild(corner);
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupHotCorner);
+} else {
+    setupHotCorner();
+}
 
 // 2. Hide Home Assistant sidebar, drawer, hamburger menu button, and profile logout
 try {
@@ -654,51 +759,79 @@ function lockKioskNow() {
         .catch(e => console.error(e));
 }
 
+function triggerUnlock(min) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (currentAdminToken) headers['Authorization'] = 'Bearer ' + currentAdminToken;
+    fetch('http://127.0.0.1:8080/api/admin/unlock', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({ duration_minutes: min, admin_token: currentAdminToken })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            window.__kiosk_unlocked = true;
+            unlockExpiresAt = Date.now() + (d.duration_seconds * 1000);
+            showUnlockFloatingPill(d.duration_seconds);
+            startClientCountdown();
+            if (adminRoot) adminRoot.style.display = 'none';
+        } else {
+            alert(d.error || 'Failed to unlock');
+        }
+    })
+    .catch(e => alert('Failed to unlock: ' + e));
+}
+
 function renderAdminUI() {
     if (!adminShadow) return;
+    resetAdminInactivity();
 
     if (!adminAuthenticated) {
         adminShadow.innerHTML = `
             <style>
                 .overlay {
-                    position: fixed; inset: 0; background: rgba(10, 14, 26, 0.88);
-                    backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: center;
+                    position: fixed; inset: 0; background: rgba(10, 14, 26, 0.92);
+                    backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 }
                 .card {
-                    background: #182032; border: 1px solid rgba(255,255,255,0.12);
-                    border-radius: 16px; padding: 32px; width: 380px; color: #fff;
-                    box-shadow: 0 16px 40px rgba(0,0,0,0.6); text-align: center;
+                    background: #182032; border: 1px solid rgba(255,255,255,0.14);
+                    border-radius: 18px; padding: 34px; width: 400px; color: #fff;
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.7); text-align: center;
                 }
-                h2 { margin: 0 0 8px 0; font-size: 22px; font-weight: 600; }
-                p { margin: 0 0 24px 0; font-size: 14px; color: #9aa4b2; }
+                h2 { margin: 0 0 8px 0; font-size: 22px; font-weight: 600; display:flex; align-items:center; justify-content:center; gap:8px; }
+                p { margin: 0 0 20px 0; font-size: 14px; color: #9aa4b2; }
                 input {
-                    width: 100%; box-sizing: border-box; padding: 12px 16px;
-                    border-radius: 8px; border: 1px solid #334155; background: #0f172a;
-                    color: #fff; font-size: 16px; outline: none; margin-bottom: 20px;
+                    width: 100%; box-sizing: border-box; padding: 13px 16px;
+                    border-radius: 10px; border: 1px solid #334155; background: #0f172a;
+                    color: #fff; font-size: 16px; outline: none; margin-bottom: 18px;
                 }
                 input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
                 .btn-row { display: flex; gap: 12px; }
                 button {
-                    flex: 1; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 600;
-                    cursor: pointer; border: none; transition: 0.2s;
+                    flex: 1; padding: 12px; border-radius: 10px; font-size: 15px; font-weight: 600;
+                    cursor: pointer; border: none; transition: 0.15s;
                 }
                 .btn-primary { background: #3b82f6; color: #fff; }
                 .btn-primary:hover { background: #2563eb; }
                 .btn-secondary { background: #334155; color: #cbd5e1; }
                 .btn-secondary:hover { background: #475569; }
-                .error { color: #ef4444; font-size: 13px; margin-top: 12px; display: none; }
+                .error { color: #f87171; font-size: 13px; margin-top: 14px; line-height: 1.4; display: none; }
+                .shortcut-hint { margin-top: 18px; font-size: 12px; color: #64748b; border-top: 1px solid #1e293b; padding-top: 12px; }
             </style>
             <div class="overlay">
                 <div class="card">
-                    <h2>🔒 Kiosk Admin Mode</h2>
-                    <p>Enter the admin password to unlock controls.</p>
-                    <input type="password" id="admin-pass" placeholder="Password (default: kiosk / PIN)" autofocus />
+                    <h2>🔒 Kiosk Security Verification</h2>
+                    <p>Enter your administrator password or PIN to unlock settings.</p>
+                    <input type="password" id="admin-pass" placeholder="Admin Password / PIN" autofocus />
                     <div class="btn-row">
                         <button class="btn-secondary" id="btn-cancel">Cancel</button>
-                        <button class="btn-primary" id="btn-unlock">Unlock</button>
+                        <button class="btn-primary" id="btn-unlock">Authenticate</button>
                     </div>
-                    <div class="error" id="auth-error">Incorrect password. Please try again.</div>
+                    <div class="error" id="auth-error"></div>
+                    <div class="shortcut-hint">
+                        💡 Tip: Press <kbd style="background:#0f172a; padding:2px 5px; border-radius:4px;">Esc</kbd> to exit or tap top-right 5x on touchscreens.
+                    </div>
                 </div>
             </div>
         `;
@@ -709,35 +842,38 @@ function renderAdminUI() {
         const errorEl = adminShadow.getElementById('auth-error');
 
         const doAuth = () => {
-            const pass = passInput.value;
+            const pass = passInput.value.trim();
+            if (!pass) return;
             fetch('http://127.0.0.1:8080/api/admin/verify_pin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pin: pass })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.authenticated) {
+            .then(res => res.json().then(data => ({ status: res.status, data: data })))
+            .then(({ status, data }) => {
+                if (data.authenticated && data.admin_token) {
+                    currentAdminToken = data.admin_token;
                     adminAuthenticated = true;
                     renderAdminUI();
                 } else {
+                    errorEl.textContent = data.error || 'Authentication failed. Please verify your credentials.';
                     errorEl.style.display = 'block';
+                    passInput.value = '';
                 }
             })
             .catch(() => {
-                if (pass === 'kiosk' || pass === 'admin' || pass === '1234') {
-                    adminAuthenticated = true;
-                    renderAdminUI();
-                } else {
-                    errorEl.style.display = 'block';
-                }
+                errorEl.textContent = 'Connection error. Please retry.';
+                errorEl.style.display = 'block';
             });
         };
 
         unlockBtn.onclick = doAuth;
-        passInput.onkeydown = (e) => { if (e.key === 'Enter') doAuth(); };
+        passInput.onkeydown = (e) => {
+            if (e.key === 'Enter') doAuth();
+            if (e.key === 'Escape') { adminRoot.style.display = 'none'; }
+        };
         cancelBtn.onclick = () => { adminRoot.style.display = 'none'; };
-        setTimeout(() => passInput.focus(), 100);
+        setTimeout(() => passInput.focus(), 80);
         return;
     }
 
@@ -745,37 +881,42 @@ function renderAdminUI() {
     adminShadow.innerHTML = `
         <style>
             .overlay {
-                position: fixed; inset: 0; background: rgba(8, 12, 22, 0.90);
+                position: fixed; inset: 0; background: rgba(8, 12, 22, 0.92);
                 backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
             .dashboard {
                 background: #131b2e; border: 1px solid rgba(255,255,255,0.14);
-                border-radius: 20px; width: 680px; max-width: 92vw; max-height: 90vh;
+                border-radius: 20px; width: 720px; max-width: 94vw; max-height: 92vh;
                 display: flex; flex-direction: column; color: #fff; overflow: hidden;
                 box-shadow: 0 24px 60px rgba(0,0,0,0.7);
             }
             .header {
-                padding: 20px 24px; border-bottom: 1px solid #1e293b; display: flex;
+                padding: 18px 24px; border-bottom: 1px solid #1e293b; display: flex;
                 align-items: center; justify-content: space-between; background: #0f172a;
             }
             .header h3 { margin: 0; font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-            .header button {
+            .header .hdr-btns { display: flex; gap: 8px; align-items: center; }
+            .badge {
+                font-size: 11px; padding: 3px 8px; border-radius: 12px; background: rgba(16, 185, 129, 0.2);
+                border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-weight: 600;
+            }
+            .close-btn {
                 background: transparent; border: none; color: #94a3b8; font-size: 22px;
                 cursor: pointer; padding: 4px 8px; border-radius: 6px;
             }
-            .header button:hover { background: #1e293b; color: #fff; }
-            .content { padding: 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 20px; }
+            .close-btn:hover { background: #1e293b; color: #fff; }
+            .content { padding: 22px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
             .section {
-                background: #182238; border: 1px solid #23314d; border-radius: 12px; padding: 18px;
+                background: #182238; border: 1px solid #23314d; border-radius: 14px; padding: 18px;
             }
             .section-title {
-                font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #93c5fd;
-                display: flex; align-items: center; gap: 8px;
+                font-size: 15px; font-weight: 600; margin-bottom: 10px; color: #93c5fd;
+                display: flex; align-items: center; justify-content: space-between;
             }
             .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
             .btn {
-                padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 500;
+                padding: 9px 15px; border-radius: 8px; font-size: 13px; font-weight: 600;
                 cursor: pointer; border: 1px solid transparent; transition: 0.15s;
             }
             .btn-action { background: #2563eb; color: #fff; }
@@ -786,66 +927,107 @@ function renderAdminUI() {
             .btn-danger:hover { background: #b91c1c; }
             .btn-subtle { background: #23314d; color: #e2e8f0; }
             .btn-subtle:hover { background: #334155; }
-            .url-list { max-height: 120px; overflow-y: auto; margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+            .url-list { max-height: 110px; overflow-y: auto; margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
             .url-item {
                 display: flex; align-items: center; justify-content: space-between;
                 background: #0f172a; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-family: monospace;
             }
             .url-item button { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px; }
-            .input-row { display: flex; gap: 8px; margin-top: 10px; }
+            .input-row { display: flex; gap: 8px; margin-top: 8px; }
             .input-row input {
-                flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #334155;
+                flex: 1; padding: 9px 12px; border-radius: 8px; border: 1px solid #334155;
                 background: #0f172a; color: #fff; font-size: 13px; outline: none;
             }
             .slider-row { display: flex; align-items: center; gap: 14px; }
             .slider-row input { flex: 1; }
+            .shortcut-grid {
+                display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; font-size: 12px; color: #cbd5e1;
+            }
+            .shortcut-item {
+                background: #0f172a; padding: 6px 10px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;
+            }
+            kbd { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: 600; color: #93c5fd; }
         </style>
         <div class="overlay">
             <div class="dashboard">
                 <div class="header">
-                    <h3>⚙️ Kiosk Control Center</h3>
-                    <button id="btn-close-dash">✕</button>
+                    <h3>⚙️ Kiosk Control Center <span class="badge">Authenticated</span></h3>
+                    <div class="hdr-btns">
+                        <button class="close-btn" id="btn-close-dash" title="Close (Esc)">✕</button>
+                    </div>
                 </div>
                 <div class="content">
                     <!-- Temporary Unlock Mode -->
                     <div class="section">
-                        <div class="section-title">🔓 Temporary Unlock Mode</div>
+                        <div class="section-title">
+                            <span>🔓 Temporary Unlock Mode</span>
+                            <span style="font-size:12px; font-weight:normal; color:#94a3b8;">Hotkeys: 1, 2, 3, 4</span>
+                        </div>
                         <p style="margin:0 0 12px 0; font-size:13px; color:#94a3b8;">
-                            Temporarily disables URL lockdowns and enables keyboard shortcuts. The system will automatically re-lock when the timer expires.
+                            Temporarily disables URL restrictions and enables full keyboard navigation. Automatically re-locks when timer expires.
                         </p>
                         <div class="btn-group">
-                            <button class="btn btn-action" data-unlock="5">5 Minutes</button>
-                            <button class="btn btn-action" data-unlock="10">10 Minutes</button>
-                            <button class="btn btn-action" data-unlock="15">15 Minutes</button>
-                            <button class="btn btn-action" data-unlock="30">30 Minutes</button>
-                            <button class="btn btn-danger" id="btn-lock-now">🔒 Lock Immediately</button>
+                            <button class="btn btn-action" data-unlock="5">5 Minutes [1]</button>
+                            <button class="btn btn-action" data-unlock="10">10 Minutes [2]</button>
+                            <button class="btn btn-action" data-unlock="15">15 Minutes [3]</button>
+                            <button class="btn btn-action" data-unlock="30">30 Minutes [4]</button>
+                            <button class="btn btn-danger" id="btn-lock-now">🔒 Emergency Lock [L]</button>
                         </div>
                     </div>
 
                     <!-- Allowed Websites Manager -->
                     <div class="section">
-                        <div class="section-title">🌐 Allowed Websites Manager</div>
-                        <p style="margin:0 0 8px 0; font-size:13px; color:#94a3b8;">
-                            Configure domains or URLs permitted through the Enterprise Security lockdown:
+                        <div class="section-title">🌐 Allowed Websites (Enterprise Policy)</div>
+                        <p style="margin:0 0 6px 0; font-size:13px; color:#94a3b8;">
+                            Authorized domains and IPs strictly permitted during kiosk lock:
                         </p>
                         <div class="input-row">
                             <input type="text" id="new-url-input" placeholder="e.g. google.com or 192.168.1.50:8000" />
-                            <button class="btn btn-action" id="btn-add-url">+ Add</button>
+                            <button class="btn btn-action" id="btn-add-url">+ Add URL</button>
                         </div>
-                        <div class="url-list" id="allowed-url-list">Loading allowed URLs...</div>
+                        <div class="url-list" id="allowed-url-list">Loading authorized URLs...</div>
                     </div>
 
                     <!-- Display & Screen Controls -->
                     <div class="section">
-                        <div class="section-title">🖥️ Display & Brightness Controls</div>
+                        <div class="section-title">
+                            <span>🖥️ Display & Power</span>
+                            <span style="font-size:12px; font-weight:normal; color:#94a3b8;">Hotkeys: T (Power)</span>
+                        </div>
                         <div class="slider-row">
                             <span style="font-size:13px; width:80px;">Brightness:</span>
                             <input type="range" id="brightness-slider" min="10" max="100" value="100" />
                             <span id="brightness-val" style="font-size:13px; width:45px;">100%</span>
                         </div>
                         <div class="btn-group" style="margin-top: 14px;">
-                            <button class="btn btn-subtle" id="btn-screen-toggle">Toggle Screen Power</button>
-                            <button class="btn btn-subtle" id="btn-reload-disp">🔁 Reload Display</button>
+                            <button class="btn btn-subtle" id="btn-screen-toggle">Toggle Screen Power [T]</button>
+                            <button class="btn btn-subtle" id="btn-reload-disp">🔁 Reload Display [D]</button>
+                        </div>
+                    </div>
+
+                    <!-- Security & PIN Management -->
+                    <div class="section">
+                        <div class="section-title">🛡️ Security & PIN Settings</div>
+                        <p style="margin:0 0 8px 0; font-size:13px; color:#94a3b8;">
+                            Change administrator passcode (minimum 4 characters):
+                        </p>
+                        <div class="input-row">
+                            <input type="password" id="new-pin-input" placeholder="Enter new PIN / Password" />
+                            <button class="btn btn-warn" id="btn-save-pin">Update PIN</button>
+                        </div>
+                        <div id="pin-feedback" style="font-size:12px; margin-top:6px; display:none;"></div>
+                    </div>
+
+                    <!-- Keyboard Shortcuts Cheat Sheet -->
+                    <div class="section">
+                        <div class="section-title">⚡ Advanced Shortcuts Reference</div>
+                        <div class="shortcut-grid">
+                            <div class="shortcut-item"><span>Admin Menu:</span> <kbd>Ctrl+Alt+A</kbd></div>
+                            <div class="shortcut-item"><span>Panic Relock:</span> <kbd>Ctrl+Alt+Shift+L</kbd></div>
+                            <div class="shortcut-item"><span>Quick Reboot:</span> <kbd>Ctrl+Alt+Shift+R</kbd></div>
+                            <div class="shortcut-item"><span>Screen Toggle:</span> <kbd>Ctrl+Alt+Shift+B</kbd></div>
+                            <div class="shortcut-item"><span>Touchscreen:</span> <span>5 taps top-right</span></div>
+                            <div class="shortcut-item"><span>Close Menu:</span> <kbd>Esc</kbd></div>
                         </div>
                     </div>
 
@@ -853,8 +1035,8 @@ function renderAdminUI() {
                     <div class="section">
                         <div class="section-title">⚡ System Operations</div>
                         <div class="btn-group">
-                            <button class="btn btn-danger" id="btn-reboot-pi">🔄 Reboot Raspberry Pi</button>
-                            <button class="btn btn-subtle" id="btn-reset-dash">🏠 Home / Dashboard</button>
+                            <button class="btn btn-danger" id="btn-reboot-pi">🔄 Reboot Raspberry Pi [R]</button>
+                            <button class="btn btn-subtle" id="btn-reset-dash">🏠 Home Dashboard</button>
                         </div>
                     </div>
                 </div>
@@ -862,32 +1044,26 @@ function renderAdminUI() {
         </div>
     `;
 
+    // Hook up interaction listener to reset inactivity timer
+    adminShadow.querySelector('.dashboard').addEventListener('mousemove', resetAdminInactivity);
+    adminShadow.querySelector('.dashboard').addEventListener('click', resetAdminInactivity);
+
     adminShadow.getElementById('btn-close-dash').onclick = () => { adminRoot.style.display = 'none'; };
 
+    // Duration buttons
     adminShadow.querySelectorAll('[data-unlock]').forEach(btn => {
         btn.onclick = () => {
             const min = parseInt(btn.getAttribute('data-unlock'));
-            fetch('http://127.0.0.1:8080/api/admin/unlock', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ duration_minutes: min })
-            })
-            .then(r => r.json())
-            .then(d => {
-                window.__kiosk_unlocked = true;
-                unlockExpiresAt = Date.now() + (d.duration_seconds * 1000);
-                showUnlockFloatingPill(d.duration_seconds);
-                startClientCountdown();
-                adminRoot.style.display = 'none';
-            })
-            .catch(e => alert('Failed to unlock: ' + e));
+            triggerUnlock(min);
         };
     });
 
+    // Lock Now button
     adminShadow.getElementById('btn-lock-now').onclick = () => {
         lockKioskNow();
     };
 
+    // Load allowlist
     const urlListEl = adminShadow.getElementById('allowed-url-list');
     function loadAllowlist() {
         fetch('http://127.0.0.1:8080/api/admin/allowlist')
@@ -904,10 +1080,12 @@ function renderAdminUI() {
                     row.className = 'url-item';
                     row.innerHTML = `<span>${u}</span><button title="Remove">✕</button>`;
                     row.querySelector('button').onclick = () => {
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (currentAdminToken) headers['Authorization'] = 'Bearer ' + currentAdminToken;
                         fetch('http://127.0.0.1:8080/api/admin/allowlist', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'remove', url: u })
+                            headers: headers,
+                            body: JSON.stringify({ action: 'remove', url: u, admin_token: currentAdminToken })
                         }).then(() => loadAllowlist());
                     };
                     urlListEl.appendChild(row);
@@ -917,25 +1095,60 @@ function renderAdminUI() {
     }
     loadAllowlist();
 
+    // Add URL
     const addUrlInput = adminShadow.getElementById('new-url-input');
     adminShadow.getElementById('btn-add-url').onclick = () => {
         const val = addUrlInput.value.trim();
         if (!val) return;
+        const headers = { 'Content-Type': 'application/json' };
+        if (currentAdminToken) headers['Authorization'] = 'Bearer ' + currentAdminToken;
         fetch('http://127.0.0.1:8080/api/admin/allowlist', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'add', url: val })
+            headers: headers,
+            body: JSON.stringify({ action: 'add', url: val, admin_token: currentAdminToken })
         }).then(() => {
             addUrlInput.value = '';
             loadAllowlist();
         });
     };
 
+    // Change PIN
+    const newPinInput = adminShadow.getElementById('new-pin-input');
+    const pinFeedback = adminShadow.getElementById('pin-feedback');
+    adminShadow.getElementById('btn-save-pin').onclick = () => {
+        const np = newPinInput.value.trim();
+        if (np.length < 4) {
+            pinFeedback.textContent = '❌ PIN must be at least 4 characters long.';
+            pinFeedback.style.color = '#f87171';
+            pinFeedback.style.display = 'block';
+            return;
+        }
+        const headers = { 'Content-Type': 'application/json' };
+        if (currentAdminToken) headers['Authorization'] = 'Bearer ' + currentAdminToken;
+        fetch('http://127.0.0.1:8080/api/admin/change_pin', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ new_pin: np, admin_token: currentAdminToken })
+        })
+        .then(r => r.json())
+        .then(d => {
+            if (d.success) {
+                pinFeedback.textContent = '✓ Admin PIN successfully updated!';
+                pinFeedback.style.color = '#34d399';
+                pinFeedback.style.display = 'block';
+                newPinInput.value = '';
+            } else {
+                pinFeedback.textContent = '❌ ' + (d.error || 'Failed to update PIN');
+                pinFeedback.style.color = '#f87171';
+                pinFeedback.style.display = 'block';
+            }
+        });
+    };
+
+    // Brightness slider
     const bSlider = adminShadow.getElementById('brightness-slider');
     const bVal = adminShadow.getElementById('brightness-val');
-    bSlider.oninput = () => {
-        bVal.textContent = bSlider.value + '%';
-    };
+    bSlider.oninput = () => { bVal.textContent = bSlider.value + '%'; };
     bSlider.onchange = () => {
         fetch('http://127.0.0.1:8080/api/screen/brightness', {
             method: 'POST',

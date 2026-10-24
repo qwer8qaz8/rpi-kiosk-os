@@ -36,6 +36,29 @@ UNLOCK_STATE = {
     "expires_at": 0
 }
 
+# Cryptographic token authentication and brute-force protection
+ADMIN_TOKENS = {}
+FAILED_LOGINS = {
+    "attempts": 0,
+    "locked_until": 0
+}
+
+def is_admin_token_valid(req):
+    auth = req.headers.get("Authorization", "")
+    token = ""
+    if auth.startswith("Bearer "):
+        token = auth[7:].strip()
+    if not token:
+        body = req.get_json(silent=True) or {}
+        token = body.get("admin_token", "")
+    if not token:
+        return False
+    exp = ADMIN_TOKENS.get(token, 0)
+    if exp > time.time():
+        ADMIN_TOKENS[token] = time.time() + 1800  # Refresh 30 min expiry
+        return True
+    return False
+
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -409,11 +432,21 @@ def relock_kiosk():
 def api_admin_verify_pin():
     if request.method == "OPTIONS":
         return "", 200
+    now = time.time()
+    if now < FAILED_LOGINS["locked_until"]:
+        wait_sec = max(1, int(FAILED_LOGINS["locked_until"] - now))
+        return jsonify({
+            "success": False,
+            "error": f"Security lockout: Too many failed attempts. Try again in {wait_sec}s.",
+            "locked": True,
+            "wait_seconds": wait_sec
+        }), 429
+
     req = request.get_json(silent=True) or request.form
     pin_attempt = str(req.get("pin", "")).strip()
     cfg = load_config()
     saved_pin = str(cfg.get("webui_pin", "")).strip()
-    # Default accepted PIN/passwords
+
     valid = False
     if saved_pin and pin_attempt == saved_pin:
         valid = True
@@ -423,14 +456,58 @@ def api_admin_verify_pin():
         valid = True
 
     if valid:
-        return jsonify({"success": True, "authenticated": True})
-    return jsonify({"success": False, "error": "Invalid admin password"}), 401
+        FAILED_LOGINS["attempts"] = 0
+        FAILED_LOGINS["locked_until"] = 0
+        token = secrets.token_hex(24)
+        ADMIN_TOKENS[token] = time.time() + 1800  # 30 minute session
+        return jsonify({"success": True, "authenticated": True, "admin_token": token})
+    else:
+        FAILED_LOGINS["attempts"] += 1
+        rem = max(0, 5 - FAILED_LOGINS["attempts"])
+        if FAILED_LOGINS["attempts"] >= 5:
+            FAILED_LOGINS["locked_until"] = time.time() + 60
+            return jsonify({
+                "success": False,
+                "error": "Security lockout: 5 incorrect attempts. Access locked for 60 seconds.",
+                "locked": True,
+                "wait_seconds": 60
+            }), 429
+        return jsonify({
+            "success": False,
+            "error": f"Incorrect password. {rem} attempt(s) remaining.",
+            "attempts_remaining": rem
+        }), 401
+
+
+@app.route("/api/admin/change_pin", methods=["POST", "OPTIONS"])
+def api_admin_change_pin():
+    if request.method == "OPTIONS":
+        return "", 200
+    if not is_admin_token_valid(request):
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    req = request.get_json(silent=True) or request.form
+    new_pin = str(req.get("new_pin", "")).strip()
+    if len(new_pin) < 4:
+        return jsonify({"success": False, "error": "New PIN must be at least 4 characters"}), 400
+
+    cfg = load_config()
+    cfg["webui_pin"] = new_pin
+    save_config(cfg)
+    logger.info("[Security] Admin PIN successfully changed.")
+    return jsonify({"success": True, "message": "Admin PIN updated successfully"})
 
 
 @app.route("/api/admin/unlock", methods=["POST", "OPTIONS"])
 def api_admin_unlock():
     if request.method == "OPTIONS":
         return "", 200
+    if not is_admin_token_valid(request):
+        # Allow localhost / loopback for terminal or script calls
+        client_ip = request.remote_addr
+        if client_ip not in ["127.0.0.1", "::1", "localhost"]:
+            return jsonify({"success": False, "error": "Unauthorized: Admin session required"}), 401
+
     global UNLOCK_TIMER
     req = request.get_json(silent=True) or request.form
     duration_minutes = float(req.get("duration_minutes", 10))
@@ -520,12 +597,36 @@ def api_admin_allowlist():
     if request.method == "GET":
         return jsonify({"allowed_urls": cfg.get("allowed_urls", [])})
 
+    if not is_admin_token_valid(request):
+        client_ip = request.remote_addr
+        if client_ip not in ["127.0.0.1", "::1", "localhost"]:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
+
     req = request.get_json(silent=True) or request.form
     action = req.get("action", "set")
     urls = cfg.setdefault("allowed_urls", [])
 
+    def sanitize_url(raw):
+        s = str(raw).strip()
+        # Reject dangerous schemes
+        for bad in ["javascript:", "file:", "data:", "blob:", "about:", "chrome:"]:
+            if s.lower().startswith(bad):
+                return None
+        # Normalize
+        if "://" in s:
+            try:
+                import urllib.parse
+                p = urllib.parse.urlparse(s)
+                if p.scheme in ["http", "https"] and p.netloc:
+                    return f"{p.scheme}://{p.netloc}"
+            except Exception:
+                return None
+        # Bare domain / host
+        clean = s.split("/")[0].strip()
+        return clean if clean else None
+
     if action == "add":
-        new_url = str(req.get("url", "")).strip()
+        new_url = sanitize_url(req.get("url", ""))
         if new_url and new_url not in urls:
             urls.append(new_url)
     elif action == "remove":
@@ -533,8 +634,12 @@ def api_admin_allowlist():
         if del_url in urls:
             urls.remove(del_url)
     elif action == "set" or "urls" in req:
-        urls = [str(u).strip() for u in req.get("urls", []) if str(u).strip()]
-        cfg["allowed_urls"] = urls
+        cleaned_urls = []
+        for u in req.get("urls", []):
+            cu = sanitize_url(u)
+            if cu and cu not in cleaned_urls:
+                cleaned_urls.append(cu)
+        cfg["allowed_urls"] = cleaned_urls
 
     save_config(cfg)
     logger.info("Updated URL allowlist in config.json. Re-applying Enterprise policy...")
