@@ -258,6 +258,9 @@ apt-get install -y --no-install-recommends \
   avahi-utils \
   python3-paho-mqtt \
   python3-flask \
+  plymouth \
+  plymouth-themes \
+  alsa-utils \
   git \
   curl \
   jq \
@@ -360,6 +363,7 @@ cat << EOF > /etc/kiosk/config.json
   "brightness": 100,
   "display_type": "$DISPLAY_TYPE",
   "display_rotation": "$ROTATION",
+  "startup_chime": true,
   "lockdown": true,
   "allowed_urls": [],
   "webui_pin": "",
@@ -382,6 +386,59 @@ chmod 664 /etc/kiosk/config.json
 
 # Apply Enterprise Lockdown Policy for Chromium across all browser policy paths
 /opt/kiosk/kiosk-config.sh --lockdown 2>/dev/null || true
+
+# Native Clean Appliance Boot (Zero Console Text & Plymouth Bootsplash)
+echo -e "${GREEN}[*] Configuring Native Bootsplash and Silent Appliance Boot...${NC}"
+mkdir -p /usr/share/plymouth/themes/kioskos
+if [ -d /opt/kiosk/plymouth ]; then
+  cp -f /opt/kiosk/plymouth/kioskos.plymouth /usr/share/plymouth/themes/kioskos/ 2>/dev/null || true
+  cp -f /opt/kiosk/plymouth/kioskos.script /usr/share/plymouth/themes/kioskos/ 2>/dev/null || true
+fi
+if [ -f /opt/kiosk/splash.png ]; then
+  cp -f /opt/kiosk/splash.png /usr/share/plymouth/themes/kioskos/ 2>/dev/null || true
+fi
+chmod 644 /usr/share/plymouth/themes/kioskos/* 2>/dev/null || true
+
+if [ -x /usr/sbin/plymouth-set-default-theme ]; then
+  /usr/sbin/plymouth-set-default-theme -R kioskos 2>/dev/null || true
+fi
+
+# Configure cmdline.txt to eliminate all boot logs, blinking cursor, and letters
+CMDLINE_FILE=""
+for cf in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
+  if [ -f "$cf" ]; then
+    CMDLINE_FILE="$cf"
+    break
+  fi
+done
+
+if [ -n "$CMDLINE_FILE" ]; then
+  sed -i 's/console=tty1/console=tty3/g' "$CMDLINE_FILE"
+  sed -i 's/loglevel=[0-9]/loglevel=0/g' "$CMDLINE_FILE"
+  for param in quiet splash plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0 consoleblank=0 systemd.show_status=0 rd.systemd.show_status=0 rd.udev.log_level=0 udev.log_level=0 fsck.mode=skip; do
+    if ! grep -q "$param" "$CMDLINE_FILE"; then
+      sed -i "s/$/ $param/" "$CMDLINE_FILE"
+    fi
+  done
+fi
+
+# Disable rainbow splash square & firmware boot delay in config.txt
+CONFIG_TXT=""
+for cf in /boot/firmware/config.txt /boot/config.txt; do
+  if [ -f "$cf" ]; then
+    CONFIG_TXT="$cf"
+    break
+  fi
+done
+
+if [ -n "$CONFIG_TXT" ]; then
+  if ! grep -q "disable_splash=1" "$CONFIG_TXT"; then
+    echo -e "\n# KioskOS Clean Boot\ndisable_splash=1\nboot_delay=0" >> "$CONFIG_TXT"
+  fi
+fi
+
+# Mask terminal getty on tty1 so no login text or prompt is ever displayed
+systemctl mask getty@tty1.service 2>/dev/null || true
 
 # Customize Systemd units for the detected user and UID
 echo -e "${GREEN}[5/6] Registering Systemd Services...${NC}"

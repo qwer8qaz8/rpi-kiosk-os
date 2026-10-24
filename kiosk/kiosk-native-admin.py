@@ -229,6 +229,15 @@ class NativeAdminWindow(Gtk.Window):
         rot_box.pack_start(self.rot_combo, False, False, 0)
         row2.pack_start(rot_box, False, False, 0)
 
+        chime_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        chime_lbl = Gtk.Label(label="Startup Chime:")
+        self.chime_switch = Gtk.Switch()
+        self.chime_switch.set_active(self.config.get("startup_chime", True))
+        self.chime_switch.connect("state-set", self.on_chime_toggle)
+        chime_box.pack_start(chime_lbl, False, False, 0)
+        chime_box.pack_start(self.chime_switch, False, False, 0)
+        row2.pack_start(chime_box, False, False, 0)
+
         card2.pack_start(row2, False, False, 0)
         content_box.pack_start(card2, False, False, 0)
 
@@ -317,6 +326,14 @@ class NativeAdminWindow(Gtk.Window):
             self.config["display_rotation"] = rot
             save_config(self.config)
             subprocess.run(["sudo", "/usr/local/bin/kiosk-screen", "rotate", rot], capture_output=True)
+
+    def on_chime_toggle(self, switch, state):
+        self.config["startup_chime"] = state
+        save_config(self.config)
+        if state:
+            chime_script = "/opt/kiosk/play-chime.sh"
+            if os.path.exists(chime_script):
+                subprocess.Popen([chime_script])
 
     def on_run_update(self, widget):
         if os.path.exists("/opt/kiosk/kiosk-native-update.py"):

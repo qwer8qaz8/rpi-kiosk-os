@@ -6,6 +6,7 @@
   "display_rotation": "normal",
   "touchscreen": "auto",
   "prevent_screen_sleep": true,
+  "startup_chime": true,
   "hide_sidebar_menu": true,
   "display_input_mode": "mouse",
   "lockdown": true,

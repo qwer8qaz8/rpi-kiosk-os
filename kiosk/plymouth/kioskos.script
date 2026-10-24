@@ -1,0 +1,27 @@
+# ==============================================================================
+# KioskOS Plymouth Bootsplash Script
+# Hardware-accelerated DRM/KMS bootsplash with dark background & cyber emblem
+# ==============================================================================
+
+# Background #030712
+Window.SetBackgroundTopColor(0.012, 0.027, 0.07);
+Window.SetBackgroundBottomColor(0.012, 0.027, 0.07);
+
+# Load Splash Emblem
+splash_image = Image("splash.png");
+splash_sprite = Sprite(splash_image);
+
+fun refresh_callback ()
+  {
+    screen_width = Window.GetWidth();
+    screen_height = Window.GetHeight();
+    image_width = splash_image.GetWidth();
+    image_height = splash_image.GetHeight();
+
+    # Position exactly at screen center
+    splash_sprite.SetX((screen_width - image_width) / 2);
+    splash_sprite.SetY((screen_height - image_height) / 2);
+    splash_sprite.SetOpacity(1.0);
+  }
+
+Plymouth.SetRefreshFunction(refresh_callback);

@@ -112,6 +112,57 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     /opt/kiosk/backup-kiosk.sh
     ;;
 
+  chime)
+    action="${2:-test}"
+    case "$action" in
+      on|enable)
+        echo -e "${GREEN}[kioskos] Enabling startup audio chime...${NC}"
+        python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['startup_chime'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['startup_chime'] = True
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+        /opt/kiosk/play-chime.sh
+        ;;
+      off|disable)
+        echo -e "${YELLOW}[kioskos] Disabling startup audio chime...${NC}"
+        python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['startup_chime'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['startup_chime'] = False
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+        ;;
+      test|play|*)
+        echo -e "${CYAN}[kioskos] Playing startup audio chime...${NC}"
+        /opt/kiosk/play-chime.sh
+        ;;
+    esac
+    ;;
+
   *)
     show_banner
     echo -e "${BOLD}Usage:${NC} kioskos <command> [options]\n"
@@ -125,6 +176,7 @@ for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
     echo -e "  ${GREEN}restart${NC}       Restart the kiosk display compositor"
     echo -e "  ${GREEN}reboot${NC}        Reboot the Raspberry Pi system"
     echo -e "  ${GREEN}backup${NC}        Generate clean backup tarball without secrets"
+    echo -e "  ${GREEN}chime [test|on|off]${NC} Test or toggle KioskOS startup chime"
     echo ""
     ;;
 esac

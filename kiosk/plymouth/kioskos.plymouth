@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=KioskOS
+Description=Ultra-clean native boot splash for KioskOS
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/kioskos
+ScriptFile=/usr/share/plymouth/themes/kioskos/kioskos.script

@@ -53,6 +53,17 @@ except Exception:
 echo "[kiosk] Starting kiosk environment..."
 echo "[kiosk] Dashboard URL: $DASHBOARD_URL"
 
+# Play Startup Ambient Chime (async)
+if [ -x "$SCRIPT_DIR/play-chime.sh" ] && [ ! -f "/tmp/kiosk-chime-played" ]; then
+    touch "/tmp/kiosk-chime-played"
+    "$SCRIPT_DIR/play-chime.sh" &
+fi
+
+# Dismiss early boot splash cleanly
+if command -v plymouth >/dev/null 2>&1; then
+    plymouth --quit 2>/dev/null || true
+fi
+
 # If using a .local hostname (e.g. umbrel.local), ensure mDNS resolves
 if [[ "$DASHBOARD_URL" =~ ([a-zA-Z0-9.-]+\.local) ]]; then
   mdns_host="${BASH_REMATCH[1]}"
