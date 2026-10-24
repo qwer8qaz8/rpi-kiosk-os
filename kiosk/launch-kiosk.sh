@@ -376,13 +376,7 @@ function openPasswordModal() {
             if (data.authenticated || data.success) {
                 submitBtn.textContent = '✓ Unlocking...';
                 submitBtn.style.background = '#10b981';
-                fetch('http://127.0.0.1:8080/api/admin/enable_workstation', { method: 'POST' })
-                    .then(() => {
-                        window.location.href = 'http://127.0.0.1:8080/desktop';
-                    })
-                    .catch(() => {
-                        window.location.href = 'http://127.0.0.1:8080/desktop';
-                    });
+                fetch('http://127.0.0.1:8080/api/admin/enable_workstation', { method: 'POST' }).catch(() => {});
             } else {
                 submitBtn.textContent = 'Unlock (Enter)';
                 submitBtn.disabled = false;
@@ -596,6 +590,9 @@ function findHAField(name, root = document) {
 function setFieldValue(fieldOrInput, val) {
     if (!fieldOrInput) return;
     try {
+        if (fieldOrInput.id === 'new-url-input' || fieldOrInput.id === 'new-pin-input' || fieldOrInput.id === 'cfg-new-allow' || fieldOrInput.closest('#rpi-kiosk-admin-root') || fieldOrInput.closest('#rpi-kiosk-password-modal')) {
+            return;
+        }
         fieldOrInput.value = val;
         setNativeValue(fieldOrInput, val);
         if (fieldOrInput.inputElement) {
@@ -617,8 +614,11 @@ let loginAttempts = 0;
 
 function tryAutoLogin() {
     if (loggedIn) return;
-    if (window.location.pathname.includes('/lovelace')) {
+    if (window.__kiosk_unlocked || window.location.pathname.includes('/lovelace') || window.location.port === '8080') {
         loggedIn = true;
+        return;
+    }
+    if (!window.location.pathname.includes('/auth') && !document.querySelector('ha-credential-login, ha-auth-flow')) {
         return;
     }
 
@@ -638,8 +638,8 @@ function tryAutoLogin() {
     const autologinUser = '__AUTOLOGIN_USER__';
     const autologinPass = '__AUTOLOGIN_PASS__';
     if (autologinUser && autologinPass) {
-        const userInput = findHAField('username') || querySelectorDeep('input[name="username"], input[type="text"]');
-        const passInput = findHAField('password') || querySelectorDeep('input[name="password"], input[type="password"]');
+        const userInput = findHAField('username') || querySelectorDeep('ha-credential-login input[type="text"], ha-auth-flow input[name="username"], form.login input[name="username"]');
+        const passInput = findHAField('password') || querySelectorDeep('ha-credential-login input[type="password"], ha-auth-flow input[name="password"], form.login input[name="password"]');
         let submitBtn = querySelectorDeep('ha-credential-login mwc-button') || querySelectorDeep('mwc-button') || querySelectorDeep('ha-progress-button') || querySelectorDeep('button[type="submit"]');
 
         if (!submitBtn) {
@@ -1323,7 +1323,7 @@ sed -i "s|__DASHBOARD_URL__|$DASHBOARD_URL|g" "$EXT_DIR/content.js"
 EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR" "--remote-debugging-port=9222" "--remote-allow-origins=*")
 
 if [ -f "/tmp/kiosk-admin-workstation" ]; then
-    echo "Starting Chromium in Admin Workstation Mode (macOS Desktop)..."
+    echo "Starting Chromium in Admin Workstation Mode (Normal New Tab)..."
     exec "$CHROMIUM_BIN" \
       "${EXTRA_CHROME_FLAGS[@]}" \
       --start-maximized \
@@ -1334,7 +1334,7 @@ if [ -f "/tmp/kiosk-admin-workstation" ]; then
       --disk-cache-dir=/tmp/chromium-cache \
       --enable-gpu-rasterization \
       --enable-zero-copy \
-      "http://127.0.0.1:8080/desktop"
+      "chrome://newtab"
 else
     # Clean up any restored multi-tab sessions so Chromium strictly opens in single app mode
     rm -rf "$HOME/.config/chromium/Default/Sessions" 2>/dev/null || true

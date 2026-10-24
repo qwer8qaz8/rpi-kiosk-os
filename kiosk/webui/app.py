@@ -689,26 +689,8 @@ def api_admin_unlock():
         UNLOCK_TIMER.start()
 
     logger.info(f"[Admin] Temporary unlock activated for {duration_minutes} minutes ({duration_seconds}s)")
-    # Apply open policy across Chromium policy dirs
-    policy_dirs = [
-        "/etc/chromium/policies/managed",
-        "/etc/chromium-browser/policies/managed",
-        "/etc/opt/chrome/policies/managed"
-    ]
-    unlocked_policy = {
-        "URLBlocklist": [],
-        "URLAllowlist": ["*"],
-        "DeveloperToolsAvailability": 1,
-        "DownloadRestrictions": 0
-    }
-    for pdir in policy_dirs:
-        try:
-            if os.path.isdir(pdir):
-                target = os.path.join(pdir, "kiosk_security_policy.json")
-                with open(target, "w") as pf:
-                    json.dump(unlocked_policy, pf, indent=2)
-        except Exception as e:
-            logger.warning(f"Failed to write unlocked policy to {pdir}: {e}")
+    # Remove enterprise managed restrictions so all URLs are permitted
+    subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--unlock"], capture_output=True)
 
     return jsonify({
         "success": True,
