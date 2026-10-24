@@ -24,6 +24,9 @@ try:
             url = 'http://' + url[6:]
         elif url.startswith('https:/') and not url.startswith('https://'):
             url = 'https://' + url[7:]
+        if 'kiosk' not in url.lower():
+            sep = '&' if '?' in url else '?'
+            url = url + sep + 'kiosk'
         print(url)
 except Exception:
     print('http://homeassistant.local:8123/lovelace/0?kiosk')
@@ -1680,11 +1683,16 @@ function purgeHomeAssistantSandwichMenu(root = document) {
         'mwc-icon-button[slot="navigationIcon"]',
         'ha-icon-button[slot="navigationIcon"]',
         'paper-icon-button[slot="navigationIcon"]',
+        'ha-icon-button[aria-label="Menu"]',
+        'ha-icon-button[aria-label="Sidebar"]',
+        'ha-icon-button[title="Menu"]',
+        'ha-icon-button[title="Sidebar"]',
         'ha-button-menu',
         'app-header ha-menu-button',
         'ha-top-app-bar-fixed ha-menu-button',
         'ha-sidebar',
-        '#drawer'
+        '#drawer',
+        'ha-drawer'
     ];
     targets.forEach(sel => {
         try {
@@ -1731,18 +1739,19 @@ function purgeHomeAssistantSandwichMenu(root = document) {
     }
 }
 
-// Continuously observe DOM to keep sandwich button permanently stripped out
-try {
+// Continuously purge sandwich menu across document & deep shadow roots every 350ms
+function startSandwichPurge() {
     purgeHomeAssistantSandwichMenu();
-    const haObserver = new MutationObserver(() => purgeHomeAssistantSandwichMenu());
-    if (document.body) {
-        haObserver.observe(document.body, { childList: true, subtree: true });
-    } else {
-        window.addEventListener('DOMContentLoaded', () => {
+    if (!window.__kiosk_sandwich_purge_interval) {
+        window.__kiosk_sandwich_purge_interval = setInterval(() => {
             purgeHomeAssistantSandwichMenu();
-            haObserver.observe(document.body, { childList: true, subtree: true });
-        });
+        }, 350);
     }
+}
+try {
+    startSandwichPurge();
+    document.addEventListener('DOMContentLoaded', startSandwichPurge);
+    window.addEventListener('load', startSandwichPurge);
 } catch(e) {}
 
 checkAdminStatus();
