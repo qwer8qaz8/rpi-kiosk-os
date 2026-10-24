@@ -222,6 +222,7 @@ update_from_github() {
     systemctl restart kiosk-display 2>/dev/null || true
     rm -rf "$TMP_DIR"
     echo -e "${GREEN}${BOLD}Kiosk successfully updated to the latest version!${NC}\n"
+    exit 0
   else
     echo -e "${RED}Failed to reach GitHub. Check your internet connection.${NC}"
     rm -rf "$TMP_DIR"
