@@ -1,4 +1,4 @@
-/* KioskOS Modern Bottom Taskbar Style (GTK3 CSS compliant) */
+/* KioskOS Modern Centered Floating Dock (GTK3 CSS compliant) */
 * {
     border: none;
     border-radius: 0;
@@ -7,11 +7,17 @@
     min-height: 0;
 }
 
-window#waybar.kiosk-panel {
-    background: rgba(15, 23, 42, 0.95);
-    color: #f1f5f9;
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+window#waybar.kiosk-dock {
+    background: transparent;
+}
+
+window#waybar.kiosk-dock .modules-center {
+    background: rgba(15, 23, 42, 0.90);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 20px;
+    padding: 6px 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 #custom-launcher {
@@ -19,11 +25,10 @@ window#waybar.kiosk-panel {
     color: #ffffff;
     font-weight: 700;
     font-size: 13px;
-    letter-spacing: 0.5px;
-    border-radius: 8px;
-    padding: 4px 14px;
-    margin: 4px 8px 4px 6px;
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+    border-radius: 12px;
+    padding: 6px 14px;
+    margin: 0 4px;
+    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.5);
 }
 
 #custom-launcher:hover {
@@ -36,43 +41,43 @@ window#waybar.kiosk-panel {
 #custom-dock-terminal {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    border-radius: 12px;
     color: #e2e8f0;
     font-weight: 500;
-    padding: 4px 12px;
-    margin: 4px 4px;
+    padding: 6px 14px;
+    margin: 0 4px;
 }
 
 #custom-dock-chrome:hover {
     background: rgba(56, 189, 248, 0.25);
-    border-color: rgba(56, 189, 248, 0.5);
+    border-color: rgba(56, 189, 248, 0.6);
     color: #ffffff;
 }
 
 #custom-dock-settings:hover {
     background: rgba(168, 85, 247, 0.25);
-    border-color: rgba(168, 85, 247, 0.5);
+    border-color: rgba(168, 85, 247, 0.6);
     color: #ffffff;
 }
 
 #custom-dock-camera:hover {
     background: rgba(16, 185, 129, 0.25);
-    border-color: rgba(16, 185, 129, 0.5);
+    border-color: rgba(16, 185, 129, 0.6);
     color: #ffffff;
 }
 
 #custom-dock-terminal:hover {
     background: rgba(245, 158, 11, 0.25);
-    border-color: rgba(245, 158, 11, 0.5);
+    border-color: rgba(245, 158, 11, 0.6);
     color: #ffffff;
 }
 
 #custom-screencontrol {
     background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    padding: 3px 10px;
-    margin: 5px 4px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    padding: 6px 12px;
+    margin: 0 4px;
     color: #cbd5e1;
 }
 
@@ -81,34 +86,21 @@ window#waybar.kiosk-panel {
     color: #ffffff;
 }
 
-#custom-inputmode {
-    background: rgba(59, 130, 246, 0.15);
-    border: 1px solid rgba(59, 130, 246, 0.35);
-    border-radius: 6px;
-    padding: 3px 10px;
-    margin: 5px 4px;
-    color: #93c5fd;
-}
-
-#custom-inputmode:hover {
-    background: rgba(59, 130, 246, 0.3);
-    color: #ffffff;
-}
-
 #clock {
-    color: #e2e8f0;
+    color: #cbd5e1;
     font-weight: 500;
-    padding: 0 12px;
+    padding: 0 8px;
+    margin: 0 4px;
 }
 
 #custom-exitkiosk {
-    background: #dc2626;
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
     color: #ffffff;
     font-weight: 600;
-    border-radius: 8px;
-    padding: 4px 14px;
-    margin: 4px 8px 4px 4px;
-    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+    border-radius: 12px;
+    padding: 6px 14px;
+    margin: 0 4px;
+    box-shadow: 0 2px 10px rgba(220, 38, 38, 0.5);
 }
 
 #custom-exitkiosk:hover {

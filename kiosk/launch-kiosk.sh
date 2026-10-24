@@ -592,11 +592,12 @@ window.addEventListener('keydown', function(e) {
         return false;
     }
 
-    // A) Admin Unlock Shortcut in Kiosk Mode: ONLY Ctrl + Alt + = (or +)
-    const isShortcut = e.ctrlKey && e.altKey && !e.shiftKey && (
+    // A) Admin Unlock Shortcut in Kiosk Mode: Ctrl + Alt + = / + OR Ctrl + = / + (Shift agnostic)
+    const isShortcut = e.ctrlKey && (
         e.key === '=' || e.key === '+' ||
         e.code === 'Equal' || e.code === 'NumpadEqual' || e.code === 'NumpadAdd' ||
-        e.keyCode === 187 || e.keyCode === 61 || e.keyCode === 107
+        e.keyCode === 187 || e.keyCode === 61 || e.keyCode === 107 ||
+        e.which === 187 || e.which === 61 || e.which === 107
     );
 
     if (isShortcut && !inAdminMode) {
@@ -1627,6 +1628,78 @@ function renderOpticalCalibrationMarkers() {
     document.body.appendChild(overlay);
 }
 
+// Purge Home Assistant sandwich menu button (hamburger icon) & force single dashboard
+function purgeHomeAssistantSandwichMenu(root = document) {
+    const targets = [
+        'ha-menu-button',
+        'mwc-icon-button[slot="navigationIcon"]',
+        'ha-icon-button[slot="navigationIcon"]',
+        'paper-icon-button[slot="navigationIcon"]',
+        'ha-button-menu',
+        'app-header ha-menu-button',
+        'ha-top-app-bar-fixed ha-menu-button',
+        'ha-sidebar',
+        '#drawer'
+    ];
+    targets.forEach(sel => {
+        try {
+            const els = root.querySelectorAll(sel);
+            els.forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                el.style.setProperty('width', '0px', 'important');
+                el.style.setProperty('height', '0px', 'important');
+                el.style.setProperty('max-width', '0px', 'important');
+                el.style.setProperty('opacity', '0', 'important');
+            });
+        } catch(e) {}
+    });
+
+    const all = root.querySelectorAll('*');
+    for (let i = 0; i < all.length; i++) {
+        const el = all[i];
+        if (el.shadowRoot) {
+            if (!el.shadowRoot.querySelector('#kiosk-no-sandwich')) {
+                const s = document.createElement('style');
+                s.id = 'kiosk-no-sandwich';
+                s.textContent = `
+                    ha-menu-button,
+                    mwc-icon-button[slot="navigationIcon"],
+                    ha-icon-button[slot="navigationIcon"],
+                    paper-icon-button[slot="navigationIcon"],
+                    ha-sidebar,
+                    ha-drawer > [slot="drawer"] {
+                        display: none !important;
+                        visibility: hidden !important;
+                        pointer-events: none !important;
+                        width: 0 !important;
+                        height: 0 !important;
+                        max-width: 0 !important;
+                        opacity: 0 !important;
+                    }
+                `;
+                try { el.shadowRoot.appendChild(s); } catch(e) {}
+            }
+            purgeHomeAssistantSandwichMenu(el.shadowRoot);
+        }
+    }
+}
+
+// Continuously observe DOM to keep sandwich button permanently stripped out
+try {
+    purgeHomeAssistantSandwichMenu();
+    const haObserver = new MutationObserver(() => purgeHomeAssistantSandwichMenu());
+    if (document.body) {
+        haObserver.observe(document.body, { childList: true, subtree: true });
+    } else {
+        window.addEventListener('DOMContentLoaded', () => {
+            purgeHomeAssistantSandwichMenu();
+            haObserver.observe(document.body, { childList: true, subtree: true });
+        });
+    }
+} catch(e) {}
+
 checkAdminStatus();
 initInputMode();
 EOF_EXT_JS
@@ -1680,9 +1753,10 @@ else
         sleep 0.2
     done
 
-    # Launch Chromium with custom boot splash screen in Standalone Application mode
+    # Launch Chromium with custom boot splash screen locked in Fullscreen Kiosk Mode
     exec "$CHROMIUM_BIN" \
       "${EXTRA_CHROME_FLAGS[@]}" \
+      --kiosk \
       --app="http://127.0.0.1:8080/splash" \
       --start-fullscreen \
       --noerrdialogs \

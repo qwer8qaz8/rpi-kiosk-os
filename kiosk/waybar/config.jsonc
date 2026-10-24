@@ -1,45 +1,42 @@
 [
   {
-    "name": "kiosk-panel",
+    "name": "kiosk-dock",
     "layer": "top",
     "position": "bottom",
-    "height": 46,
-    "modules-left": [
+    "height": 62,
+    "modules-center": [
       "custom/launcher",
       "custom/dock-chrome",
       "custom/dock-settings",
       "custom/dock-camera",
-      "custom/dock-terminal"
-    ],
-    "modules-right": [
+      "custom/dock-terminal",
       "custom/screencontrol",
-      "custom/inputmode",
       "clock",
       "custom/exitkiosk"
     ],
     "custom/launcher": {
       "format": " ⚡ KioskOS ",
-      "tooltip": "KioskOS System Menu",
-      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/' --window-size=920,680"
+      "tooltip": "KioskOS System Control",
+      "on-click": "chromium --ozone-platform=wayland --user-data-dir=/tmp/chromium-kiosk-settings --app='http://127.0.0.1:8080/' --window-size=920,680"
     },
     "custom/dock-chrome": {
-      "format": " 🌐 Chromium ",
+      "format": " 🌐 Chrome ",
       "tooltip": "Google Chrome Web Browser",
-      "on-click": "chromium --ozone-platform=wayland 'chrome://newtab'"
+      "on-click": "chromium --ozone-platform=wayland --user-data-dir=/tmp/chromium-kiosk-browser --window-size=920,680 'chrome://newtab'"
     },
     "custom/dock-settings": {
-      "format": " ⚙️ Control Center ",
-      "tooltip": "Kiosk Settings",
-      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/' --window-size=920,680"
+      "format": " ⚙️ Settings ",
+      "tooltip": "Control Center &amp; Configuration",
+      "on-click": "chromium --ozone-platform=wayland --user-data-dir=/tmp/chromium-kiosk-settings --app='http://127.0.0.1:8080/' --window-size=920,680"
     },
     "custom/dock-camera": {
       "format": " 📷 Camera &amp; Touch ",
-      "tooltip": "Camera Optical Touchscreen &amp; Calibration",
-      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/#display' --window-size=920,680"
+      "tooltip": "Camera Optical Touch Tracking &amp; Screen Calibration",
+      "on-click": "chromium --ozone-platform=wayland --user-data-dir=/tmp/chromium-kiosk-settings --app='http://127.0.0.1:8080/#display' --window-size=920,680"
     },
     "custom/dock-terminal": {
       "format": " 💻 Terminal ",
-      "tooltip": "Linux Terminal Console",
+      "tooltip": "Linux Console Terminal",
       "on-click": "foot"
     },
     "custom/screencontrol": {
@@ -47,18 +44,13 @@
       "tooltip": "Toggle Display Screen Power",
       "on-click": "/opt/kiosk/screen-control.sh toggle"
     },
-    "custom/inputmode": {
-      "format": " 🖥️ Display Mode ",
-      "tooltip": "Touchscreen / Non-Touch Configuration",
-      "on-click": "chromium --ozone-platform=wayland --app='http://127.0.0.1:8080/#display' --window-size=920,680"
-    },
     "clock": {
-      "format": "{:%a %b %d  %I:%M %p}",
-      "tooltip-format": "{:%Y-%m-%d | %H:%M:%S}"
+      "format": " 🕒 {:%I:%M %p} ",
+      "tooltip-format": "{:%a %b %d, %Y}"
     },
     "custom/exitkiosk": {
       "format": " 🔒 Exit to Kiosk ",
-      "tooltip": "Click to exit (with countdown) or hold to exit immediately",
+      "tooltip": "Click for countdown or hold 2s for instant exit",
       "on-click": "/opt/kiosk/prompt-exit.sh",
       "on-click-right": "/opt/kiosk/lock-kiosk.sh"
     }

@@ -6,6 +6,8 @@
   "display_rotation": "normal",
   "touchscreen": "auto",
   "prevent_screen_sleep": true,
+  "hide_sidebar_menu": true,
+  "display_input_mode": "mouse",
   "lockdown": true,
   "allowed_urls": [],
   "webui_pin": "",

@@ -402,6 +402,10 @@ def api_settings():
     if "kiosk_user_id" in req:
         cfg["kiosk_user_id"] = str(req.get("kiosk_user_id", "")).strip()
 
+    # Hide Home Assistant Sandwich Menu & Sidebar
+    if "hide_sidebar_menu" in req:
+        cfg["hide_sidebar_menu"] = bool(req["hide_sidebar_menu"])
+
     # Night Mode Preferences
     if "kiosk_mode" in req:
         cfg["kiosk_mode"] = str(req["kiosk_mode"]).strip()

@@ -368,6 +368,12 @@
             <option value="270" {% if config.display_rotation == '270' %}selected{% endif %}>Inverted Portrait (270° Clockwise)</option>
           </select>
         </div>
+        <div class="form-group" style="margin-top: 10px;">
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="hide_sidebar_menu" name="hide_sidebar_menu" {% if config.get('hide_sidebar_menu', true) %}checked{% endif %}>
+            <span style="font-size: 0.88rem; font-weight: 500; color: #38bdf8;">🔒 Force Dashboard &amp; Hide Home Assistant Sandwich Menu / Sidebar</span>
+          </label>
+        </div>
         <button type="submit" class="btn btn-success" style="width: 100%; margin-top: 0.5rem;">
           💾 Apply Display Settings
         </button>
@@ -637,7 +643,8 @@
       const payload = {
         dashboard_url: document.getElementById("dashboard_url").value,
         display_rotation: document.getElementById("display_rotation").value,
-        kiosk_user_id: document.getElementById("kioskUserIdInput").value
+        kiosk_user_id: document.getElementById("kioskUserIdInput").value,
+        hide_sidebar_menu: document.getElementById("hide_sidebar_menu").checked
       };
       try {
         const res = await fetch("/api/settings", {

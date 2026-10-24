@@ -200,6 +200,8 @@ class KioskMQTTDaemon:
         client.subscribe(f"{self.base_topic}/reload/set", qos=1)
         client.subscribe(f"{self.base_topic}/reboot/set", qos=1)
         client.subscribe(f"{self.base_topic}/nightmode/set", qos=1)
+        client.subscribe(f"{self.base_topic}/hide_menu/set", qos=1)
+        client.subscribe(f"{self.base_topic}/admin_mode/set", qos=1)
         
         self.publish_states()
 
@@ -261,6 +263,20 @@ class KioskMQTTDaemon:
             save_config(cfg)
             client.publish(f"{self.base_topic}/nightmode/state", "ON" if cfg["night_mode_enabled"] else "OFF", qos=1, retain=True)
 
+        elif topic == f"{self.base_topic}/hide_menu/set":
+            cfg = load_config()
+            cfg["hide_sidebar_menu"] = payload.upper() in ["ON", "TRUE", "1"]
+            save_config(cfg)
+            client.publish(f"{self.base_topic}/hide_menu/state", "ON" if cfg["hide_sidebar_menu"] else "OFF", qos=1, retain=True)
+
+        elif topic == f"{self.base_topic}/admin_mode/set":
+            if payload.upper() in ["ON", "TRUE", "1"]:
+                subprocess.Popen(["/bin/bash", "/opt/kiosk/start-desktop.sh"])
+                client.publish(f"{self.base_topic}/admin_mode/state", "ON", qos=1, retain=True)
+            else:
+                subprocess.Popen(["/bin/bash", "/opt/kiosk/lock-kiosk.sh"])
+                client.publish(f"{self.base_topic}/admin_mode/state", "OFF", qos=1, retain=True)
+
     def publish_discovery(self):
         device_info = {
             "identifiers": [f"kiosk_{self.device_id}"],
@@ -302,6 +318,40 @@ class KioskMQTTDaemon:
         self.client.publish(
             f"{self.prefix}/switch/{self.device_id}/lockdown/config",
             json.dumps(lockdown_disc), qos=1, retain=True
+        )
+
+        # 1c. Hide Home Assistant Sandwich Menu & Sidebar Switch
+        menu_disc = {
+            "name": f"{self.device_name} Hide Sandwich Menu",
+            "unique_id": f"{self.device_id}_hide_menu",
+            "state_topic": f"{self.base_topic}/hide_menu/state",
+            "command_topic": f"{self.base_topic}/hide_menu/set",
+            "availability_topic": self.status_topic,
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "icon": "mdi:menu-open",
+            "device": device_info
+        }
+        self.client.publish(
+            f"{self.prefix}/switch/{self.device_id}/hide_menu/config",
+            json.dumps(menu_disc), qos=1, retain=True
+        )
+
+        # 1d. Admin Desktop Mode Switch
+        admin_disc = {
+            "name": f"{self.device_name} Admin Desktop Mode",
+            "unique_id": f"{self.device_id}_admin_mode",
+            "state_topic": f"{self.base_topic}/admin_mode/state",
+            "command_topic": f"{self.base_topic}/admin_mode/set",
+            "availability_topic": self.status_topic,
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "icon": "mdi:desktop-mac-dashboard",
+            "device": device_info
+        }
+        self.client.publish(
+            f"{self.prefix}/switch/{self.device_id}/admin_mode/config",
+            json.dumps(admin_disc), qos=1, retain=True
         )
 
         # 2. Brightness Number
@@ -464,6 +514,12 @@ class KioskMQTTDaemon:
         cfg = load_config()
         url = cfg.get("dashboard_url", "http://homeassistant.local:8123/lovelace/0?kiosk")
         self.client.publish(f"{self.base_topic}/url/state", url, qos=1, retain=True)
+
+        hide_menu_val = cfg.get("hide_sidebar_menu", True)
+        self.client.publish(f"{self.base_topic}/hide_menu/state", "ON" if hide_menu_val else "OFF", qos=1, retain=True)
+
+        is_admin_active = Path("/tmp/kiosk-admin-workstation").exists()
+        self.client.publish(f"{self.base_topic}/admin_mode/state", "ON" if is_admin_active else "OFF", qos=1, retain=True)
 
         telemetry = {
             "ip_address": get_ip_address(),
