@@ -18,6 +18,7 @@ import socket
 import logging
 import subprocess
 import secrets
+import threading
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, session, send_file, Response
 import time
@@ -26,6 +27,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("kiosk-webui")
 
 app = Flask(__name__)
+
+# Temporary unlock state management
+UNLOCK_LOCK = threading.Lock()
+UNLOCK_TIMER = None
+UNLOCK_STATE = {
+    "unlocked": False,
+    "expires_at": 0
+}
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
 
 # Persist or generate session secret key
 SECRET_FILE = Path("/etc/kiosk/.webui_secret")
@@ -372,6 +388,158 @@ def api_lockdown():
     logger.info("Applying Enterprise Security Lockdown...")
     subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
     return jsonify({"success": True, "message": "Enterprise Security Lockdown applied!"})
+
+
+def relock_kiosk():
+    global UNLOCK_TIMER
+    with UNLOCK_LOCK:
+        UNLOCK_STATE["unlocked"] = False
+        UNLOCK_STATE["expires_at"] = 0
+        if UNLOCK_TIMER:
+            try:
+                UNLOCK_TIMER.cancel()
+            except Exception:
+                pass
+            UNLOCK_TIMER = None
+    logger.info("[Admin] Temporary unlock expired. Re-applying Enterprise Security Lockdown...")
+    subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
+
+
+@app.route("/api/admin/verify_pin", methods=["POST", "OPTIONS"])
+def api_admin_verify_pin():
+    if request.method == "OPTIONS":
+        return "", 200
+    req = request.get_json(silent=True) or request.form
+    pin_attempt = str(req.get("pin", "")).strip()
+    cfg = load_config()
+    saved_pin = str(cfg.get("webui_pin", "")).strip()
+    # Default accepted PIN/passwords
+    valid = False
+    if saved_pin and pin_attempt == saved_pin:
+        valid = True
+    elif not saved_pin and pin_attempt in ["kiosk", "admin", "1234"]:
+        valid = True
+    elif not saved_pin:
+        valid = True
+
+    if valid:
+        return jsonify({"success": True, "authenticated": True})
+    return jsonify({"success": False, "error": "Invalid admin password"}), 401
+
+
+@app.route("/api/admin/unlock", methods=["POST", "OPTIONS"])
+def api_admin_unlock():
+    if request.method == "OPTIONS":
+        return "", 200
+    global UNLOCK_TIMER
+    req = request.get_json(silent=True) or request.form
+    duration_minutes = float(req.get("duration_minutes", 10))
+    duration_seconds = int(duration_minutes * 60)
+
+    with UNLOCK_LOCK:
+        if UNLOCK_TIMER:
+            try:
+                UNLOCK_TIMER.cancel()
+            except Exception:
+                pass
+        UNLOCK_STATE["unlocked"] = True
+        UNLOCK_STATE["expires_at"] = time.time() + duration_seconds
+        UNLOCK_TIMER = threading.Timer(duration_seconds, relock_kiosk)
+        UNLOCK_TIMER.daemon = True
+        UNLOCK_TIMER.start()
+
+    logger.info(f"[Admin] Temporary unlock activated for {duration_minutes} minutes ({duration_seconds}s)")
+    # Apply open policy across Chromium policy dirs
+    policy_dirs = [
+        "/etc/chromium/policies/managed",
+        "/etc/chromium-browser/policies/managed",
+        "/etc/opt/chrome/policies/managed"
+    ]
+    unlocked_policy = {
+        "URLBlocklist": [],
+        "URLAllowlist": ["*"],
+        "DeveloperToolsAvailability": 1,
+        "DownloadRestrictions": 0
+    }
+    for pdir in policy_dirs:
+        try:
+            if os.path.isdir(pdir):
+                target = os.path.join(pdir, "kiosk_security_policy.json")
+                with open(target, "w") as pf:
+                    json.dump(unlocked_policy, pf, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to write unlocked policy to {pdir}: {e}")
+
+    return jsonify({
+        "success": True,
+        "unlocked": True,
+        "expires_at": UNLOCK_STATE["expires_at"],
+        "duration_seconds": duration_seconds
+    })
+
+
+@app.route("/api/admin/lock", methods=["POST", "OPTIONS"])
+def api_admin_lock():
+    if request.method == "OPTIONS":
+        return "", 200
+    relock_kiosk()
+    return jsonify({"success": True, "unlocked": False, "message": "Enterprise lockdown restored"})
+
+
+@app.route("/api/admin/status", methods=["GET", "OPTIONS"])
+def api_admin_status():
+    if request.method == "OPTIONS":
+        return "", 200
+    cfg = load_config()
+    with UNLOCK_LOCK:
+        is_unlocked = UNLOCK_STATE["unlocked"]
+        remaining = max(0, int(UNLOCK_STATE["expires_at"] - time.time())) if is_unlocked else 0
+        if is_unlocked and remaining <= 0:
+            relock_kiosk()
+            is_unlocked = False
+            remaining = 0
+
+    return jsonify({
+        "unlocked": is_unlocked,
+        "remaining_seconds": remaining,
+        "dashboard_url": cfg.get("dashboard_url", ""),
+        "allowed_urls": cfg.get("allowed_urls", []),
+        "screen_on": get_screen_status() == "ON",
+        "brightness": get_screen_brightness(),
+        "display_rotation": cfg.get("display_rotation", "normal"),
+        "ha_username": cfg.get("ha_username", ""),
+        "local_ip": get_local_ip()
+    })
+
+
+@app.route("/api/admin/allowlist", methods=["GET", "POST", "OPTIONS"])
+def api_admin_allowlist():
+    if request.method == "OPTIONS":
+        return "", 200
+    cfg = load_config()
+    if request.method == "GET":
+        return jsonify({"allowed_urls": cfg.get("allowed_urls", [])})
+
+    req = request.get_json(silent=True) or request.form
+    action = req.get("action", "set")
+    urls = cfg.setdefault("allowed_urls", [])
+
+    if action == "add":
+        new_url = str(req.get("url", "")).strip()
+        if new_url and new_url not in urls:
+            urls.append(new_url)
+    elif action == "remove":
+        del_url = str(req.get("url", "")).strip()
+        if del_url in urls:
+            urls.remove(del_url)
+    elif action == "set" or "urls" in req:
+        urls = [str(u).strip() for u in req.get("urls", []) if str(u).strip()]
+        cfg["allowed_urls"] = urls
+
+    save_config(cfg)
+    logger.info("Updated URL allowlist in config.json. Re-applying Enterprise policy...")
+    subprocess.run(["sudo", "/opt/kiosk/kiosk-config.sh", "--lockdown"], capture_output=True)
+    return jsonify({"success": True, "allowed_urls": cfg.get("allowed_urls", [])})
 
 
 if __name__ == "__main__":

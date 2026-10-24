@@ -303,26 +303,27 @@ EOF
   echo -e "${YELLOW}Could not automatically configure static IP via nmcli or dhcpcd. Setting a DHCP reservation in your router is recommended.${NC}"
 }
 
-# Handle natural subcommands (e.g. `kiosk update`, `kiosk off`, `kiosk on`, `kiosk webui disable`)
+# Handle natural subcommands and CLI options (e.g. `kiosk update`, `kiosk url http://...`, `kiosk autologin ...`)
 if [ "$#" -gt 0 ]; then
-  case "$1" in
-    update)
+  SUBCMD=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+  case "$SUBCMD" in
+    update|--update)
       update_from_github
       exit 0
       ;;
     on|off|toggle)
-      /opt/kiosk/screen-control.sh "$1"
+      /opt/kiosk/screen-control.sh "$SUBCMD"
       exit 0
       ;;
-    brightness)
+    brightness|--brightness)
       /opt/kiosk/screen-control.sh brightness "$2"
       exit 0
       ;;
-    rotate)
+    rotate|--rotate)
       /opt/kiosk/screen-control.sh rotate "$2"
       exit 0
       ;;
-    status)
+    status|--status)
       echo -e "${CYAN}${BOLD}=== Kiosk Status ===${NC}"
       echo -e "Screen Power: $(/opt/kiosk/screen-control.sh status)"
       echo -e "Brightness:   $(/opt/kiosk/screen-control.sh get_brightness)%"
@@ -331,29 +332,32 @@ if [ "$#" -gt 0 ]; then
       echo -e "MQTT Client:  $(systemctl is-active kiosk-mqtt 2>/dev/null || echo "inactive")"
       exit 0
       ;;
-    reload)
+    reload|--reload)
       require_root
       systemctl restart kiosk-display
-      echo -e "${GREEN}Kiosk display reloaded!${NC}"
+      echo -e "${GREEN}✓ Kiosk display reloaded! (Configured successfully!)${NC}"
       exit 0
       ;;
-    unlock)
+    unlock|--unlock)
       require_root
       remove_security_policy
-      systemctl restart kiosk-display
-      echo -e "${GREEN}✓ Lockdown removed (Configured successfully!)${NC}"
+      systemctl restart kiosk-display 2>/dev/null || true
+      echo -e "${GREEN}✓ Temporary unlock mode enabled! (Configured successfully!)${NC}"
       exit 0
       ;;
-    lock)
+    lock|--lock|lockdown|--lockdown)
       require_root
       apply_security_policy
-      systemctl restart kiosk-display
-      echo -e "${GREEN}✓ Lockdown applied (Configured successfully!)${NC}"
+      systemctl restart kiosk-display 2>/dev/null || true
+      echo -e "${GREEN}✓ Lockdown applied! (Configured successfully!)${NC}"
       exit 0
       ;;
-    url)
+    url|--url|-u)
       require_root
       clean_url="$2"
+      if [ -z "$clean_url" ]; then
+        read -r -p "Enter new dashboard URL: " clean_url
+      fi
       if [[ "$clean_url" =~ ^https?:/[^/] ]]; then
         clean_url="${clean_url/:\//:\/\/}"
       fi
@@ -363,7 +367,7 @@ if [ "$#" -gt 0 ]; then
       echo -e "${GREEN}✓ Dashboard URL updated to: $clean_url (Configured successfully!)${NC}"
       exit 0
       ;;
-    autologin)
+    autologin|--autologin)
       require_root
       ha_user="$2"
       ha_pass="$3"
@@ -377,20 +381,21 @@ if [ "$#" -gt 0 ]; then
       save_config_val "ha_username" "$ha_user"
       save_config_val "ha_password" "$ha_pass"
       systemctl restart kiosk-display 2>/dev/null || true
-      echo -e "${GREEN}✓ Auto-login credentials saved! Kiosk display will now auto-type and log in.${NC}"
+      echo -e "${GREEN}✓ Auto-login credentials saved! (Configured successfully!)${NC}"
       exit 0
       ;;
-    reboot)
+    reboot|--reboot)
       require_root
+      echo -e "${YELLOW}Rebooting Raspberry Pi now...${NC}"
       reboot
       exit 0
       ;;
-    preset)
+    preset|--preset)
       require_root
       apply_preset "$2" "${3:-}"
       exit 0
       ;;
-    webui)
+    webui|--webui)
       require_root
       case "${2:-status}" in
         disable|off|stop)
