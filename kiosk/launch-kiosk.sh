@@ -220,16 +220,19 @@ except Exception:
 ")
 
 EXTRA_CHROME_FLAGS=()
-EXT_DIR="/tmp/kiosk-autologin-extension"
+EXT_DIR="/usr/share/chromium/extensions/kiosk-autologin"
+mkdir -p "$EXT_DIR" 2>/dev/null || EXT_DIR="/tmp/kiosk-autologin-extension"
 mkdir -p "$EXT_DIR"
 cat << 'EOF_EXT_MANIFEST' > "$EXT_DIR/manifest.json"
 {
   "manifest_version": 3,
   "name": "Kiosk Security and Auto-Login",
   "version": "1.0",
+  "permissions": ["activeTab"],
+  "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_start"
     }
@@ -347,6 +350,8 @@ function setNativeValue(element, value) {
 }
 
 let loggedIn = false;
+let loginAttempts = 0;
+
 function tryAutoLogin() {
     if (loggedIn) return;
     injectKioskStyles();
@@ -367,33 +372,80 @@ function tryAutoLogin() {
     const autologinUser = '$AUTOLOGIN_USER';
     const autologinPass = '$AUTOLOGIN_PASS';
     if (autologinUser && autologinPass) {
-        const userInput = querySelectorDeep('ha-credential-login input[name="username"]') || querySelectorDeep('input[name="username"]');
-        const passInput = querySelectorDeep('ha-credential-login input[name="password"]') || querySelectorDeep('input[name="password"]');
-        const submitBtn = querySelectorDeep('ha-credential-login mwc-button') || querySelectorDeep('button[type="submit"]') || querySelectorDeep('mwc-button');
+        const userInput = querySelectorDeep('input[name="username"], ha-textfield[name="username"] input, input[autocomplete="username"], input[type="text"]');
+        const passInput = querySelectorDeep('input[name="password"], ha-textfield[name="password"] input, input[autocomplete="current-password"], input[type="password"]');
+        let submitBtn = querySelectorDeep('ha-credential-login mwc-button') || querySelectorDeep('mwc-button') || querySelectorDeep('ha-progress-button') || querySelectorDeep('button[type="submit"]');
 
-        if (userInput && passInput && submitBtn) {
-            if (userInput.value !== autologinUser) {
-                console.log('[Kiosk] Auto-typing login credentials...');
+        if (!submitBtn) {
+            for (const b of queryAllDeep('button, [role="button"]')) {
+                const bTxt = (b.textContent || '').trim().toLowerCase();
+                if (bTxt === 'log in' || bTxt === 'login' || bTxt === 'sign in') {
+                    submitBtn = b;
+                    break;
+                }
+            }
+        }
+
+        if (userInput && passInput) {
+            if (userInput.value !== autologinUser || passInput.value !== autologinPass) {
+                console.log('[Kiosk] Autofilling credentials for ' + autologinUser + '...');
                 setNativeValue(userInput, autologinUser);
                 setNativeValue(passInput, autologinPass);
+            }
+
+            // Ensure "Keep me logged in" checkbox is checked
+            const keepLoggedIn = querySelectorDeep('ha-checkbox, input[type="checkbox"]');
+            if (keepLoggedIn && !keepLoggedIn.checked) {
+                keepLoggedIn.click();
+            }
+
+            if (submitBtn && loginAttempts < 6) {
+                loginAttempts++;
+                console.log('[Kiosk] Submitting login form (attempt ' + loginAttempts + ')...');
+                const innerBtn = submitBtn.shadowRoot ? (submitBtn.shadowRoot.querySelector('button') || submitBtn) : submitBtn;
+                innerBtn.click();
+                submitBtn.click();
                 setTimeout(() => {
-                    submitBtn.click();
+                    const form = userInput.closest('form') || querySelectorDeep('form');
+                    if (form && form.requestSubmit) form.requestSubmit();
+                }, 150);
+                if (loginAttempts >= 4) {
                     loggedIn = true;
-                    console.log('[Kiosk] Logged in successfully!');
-                }, 300);
+                }
             }
         }
     }
 }
 
+// Continuously poll until logged in or element is authenticated
+const loginInterval = setInterval(() => {
+    tryAutoLogin();
+    if (loggedIn) clearInterval(loginInterval);
+}, 400);
+
 const observer = new MutationObserver(() => tryAutoLogin());
 observer.observe(document.documentElement, { childList: true, subtree: true });
-setTimeout(tryAutoLogin, 500);
-setTimeout(tryAutoLogin, 1500);
-setTimeout(tryAutoLogin, 3000);
 EOF_EXT_JS
 
-EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR")
+# Clean up any restored multi-tab sessions so Chromium strictly opens in single app mode
+rm -rf "$HOME/.config/chromium/Default/Sessions" 2>/dev/null || true
+rm -rf "$HOME/.config/chromium/Default/Current Session" 2>/dev/null || true
+rm -rf "$HOME/.config/chromium/Default/Current Tabs" 2>/dev/null || true
+rm -rf "$HOME/.config/chromium/Default/Last Session" 2>/dev/null || true
+rm -rf "$HOME/.config/chromium/Default/Last Tabs" 2>/dev/null || true
+if [ -f "$HOME/.config/chromium/Default/Preferences" ]; then
+    sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
+    sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
+fi
+
+# Ensure Debian chromium wrapper includes extension cleanly without duplicate or empty flags
+if [ -f /etc/chromium.d/extensions ]; then
+    echo 'if [ -d /usr/share/chromium/extensions ] && [ "$(ls -A /usr/share/chromium/extensions 2>/dev/null)" ]; then export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --load-extension=`ls -dm /usr/share/chromium/extensions/* 2>/dev/null | tr -d '"'"'\n'"'"'`"; fi' | sudo tee /etc/chromium.d/extensions >/dev/null 2>&1 || true
+fi
+
+if [[ "$EXT_DIR" != "/usr/share/chromium/extensions"* ]]; then
+    EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR")
+fi
 
 # Launch Chromium locked in Standalone Application Kiosk mode (--app disables tab strips and Ctrl+T shortcuts)
 exec "$CHROMIUM_BIN" \
