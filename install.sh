@@ -325,6 +325,7 @@ chmod +x /opt/kiosk/kioskos 2>/dev/null || true
 chmod +x /opt/kiosk/kiosk-native-splash.py 2>/dev/null || true
 chmod +x /opt/kiosk/kiosk-native-update.py 2>/dev/null || true
 chmod +x /opt/kiosk/kiosk-native-admin.py 2>/dev/null || true
+chmod +x /opt/kiosk/kiosk-native-auth.py 2>/dev/null || true
 
 # Deploy labwc and waybar configurations to /etc/kiosk
 mkdir -p /etc/kiosk/labwc /etc/kiosk/waybar

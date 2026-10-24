@@ -27,6 +27,23 @@
   </windowRules>
 
   <keyboard>
+    <!-- Toggle Admin / Unlock Shortcut: Ctrl+Alt+= and variations -->
+    <keybind key="C-A-equal">
+      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
+    </keybind>
+    <keybind key="C-equal">
+      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
+    </keybind>
+    <keybind key="C-A-plus">
+      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
+    </keybind>
+    <keybind key="C-A-KP_Add">
+      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
+    </keybind>
+    <keybind key="C-A-KP_Equal">
+      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
+    </keybind>
+
     <!-- Restart Kiosk Keybind: Ctrl+Alt+R -->
     <keybind key="C-A-r">
       <action name="Execute" command="/usr/bin/sudo /bin/systemctl restart kiosk-display" />
