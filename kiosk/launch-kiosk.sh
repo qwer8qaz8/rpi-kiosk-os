@@ -220,25 +220,88 @@ except Exception:
 ")
 
 EXTRA_CHROME_FLAGS=()
-if [ -n "$AUTOLOGIN_USER" ] && [ -n "$AUTOLOGIN_PASS" ]; then
-  EXT_DIR="/tmp/kiosk-autologin-extension"
-  mkdir -p "$EXT_DIR"
-  cat << 'EOF_EXT_MANIFEST' > "$EXT_DIR/manifest.json"
+EXT_DIR="/tmp/kiosk-autologin-extension"
+mkdir -p "$EXT_DIR"
+cat << 'EOF_EXT_MANIFEST' > "$EXT_DIR/manifest.json"
 {
   "manifest_version": 3,
-  "name": "Kiosk Auto Login",
+  "name": "Kiosk Security and Auto-Login",
   "version": "1.0",
   "content_scripts": [
     {
       "matches": ["*://*/*"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ]
 }
 EOF_EXT_MANIFEST
 
-  cat << EOF_EXT_JS > "$EXT_DIR/content.js"
+cat << EOF_EXT_JS > "$EXT_DIR/content.js"
+// 1. Block keyboard shortcuts (Ctrl+T, Ctrl+N, Ctrl+W, F1-F12, zoom, etc.) and right-click
+window.addEventListener('keydown', function(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+        const key = e.key.toLowerCase();
+        if (['t', 'n', 'w', 'o', 's', 'p', 'u', 'r', 'h', 'j', 'd', 'k', 'l', 'e', 'f', 'g', 'b', 'q'].includes(key) || e.key === 'Tab' || e.key === '-' || e.key === '=' || e.key === '+') {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    }
+    if (/^f[1-9][0-2]?$/i.test(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    }
+}, true);
+
+window.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+}, true);
+
+// 2. Hide Home Assistant sidebar, drawer, hamburger menu button, and profile logout
+function hideSidebarElements(root = document) {
+    try {
+        const targets = root.querySelectorAll('ha-sidebar, ha-menu-button, #drawer, ha-drawer, .mdc-drawer, [data-panel="profile"], .profile');
+        for (const t of targets) {
+            t.style.setProperty('display', 'none', 'important');
+            t.style.setProperty('visibility', 'hidden', 'important');
+            t.style.setProperty('width', '0px', 'important');
+        }
+        const all = root.querySelectorAll('*');
+        for (const el of all) {
+            if (el.shadowRoot) {
+                hideSidebarElements(el.shadowRoot);
+            }
+        }
+    } catch (e) {}
+}
+
+function injectKioskStyles() {
+    if (!document.getElementById('rpi-kiosk-lockdown-style')) {
+        const style = document.createElement('style');
+        style.id = 'rpi-kiosk-lockdown-style';
+        style.textContent = \`
+            /* Remove sidebar, drawer, and hamburger menu button in Home Assistant */
+            ha-sidebar, #drawer, ha-drawer, .mdc-drawer { display: none !important; width: 0 !important; visibility: hidden !important; }
+            ha-menu-button { display: none !important; visibility: hidden !important; }
+            .menu, [data-panel="profile"], .profile { display: none !important; }
+            /* Disable text selection and dragging on physical touch screen */
+            * { -webkit-user-select: none !important; user-select: none !important; -webkit-user-drag: none !important; }
+            input, textarea { -webkit-user-select: text !important; user-select: text !important; }
+        \`;
+        if (document.head || document.documentElement) {
+            (document.head || document.documentElement).appendChild(style);
+        }
+    }
+    hideSidebarElements(document);
+}
+injectKioskStyles();
+document.addEventListener('DOMContentLoaded', injectKioskStyles);
+
+// 3. Shadow-DOM query helpers
 function querySelectorDeep(selector, root = document) {
     let found = root.querySelector(selector);
     if (found) return found;
@@ -250,6 +313,22 @@ function querySelectorDeep(selector, root = document) {
         }
     }
     return null;
+}
+
+function queryAllDeep(selector, root = document) {
+    let results = [];
+    try {
+        if (root.querySelectorAll) {
+            results = Array.from(root.querySelectorAll(selector));
+        }
+        const children = root.querySelectorAll ? root.querySelectorAll('*') : [];
+        for (const child of children) {
+            if (child.shadowRoot) {
+                results = results.concat(queryAllDeep(selector, child.shadowRoot));
+            }
+        }
+    } catch (e) {}
+    return results;
 }
 
 function setNativeValue(element, value) {
@@ -270,32 +349,51 @@ function setNativeValue(element, value) {
 let loggedIn = false;
 function tryAutoLogin() {
     if (loggedIn) return;
-    const userInput = querySelectorDeep('ha-credential-login input[name="username"]') || querySelectorDeep('input[name="username"]');
-    const passInput = querySelectorDeep('ha-credential-login input[name="password"]') || querySelectorDeep('input[name="password"]');
-    const submitBtn = querySelectorDeep('ha-credential-login mwc-button') || querySelectorDeep('button[type="submit"]') || querySelectorDeep('mwc-button');
+    injectKioskStyles();
 
-    if (userInput && passInput && submitBtn) {
-        if (userInput.value !== '$AUTOLOGIN_USER') {
-            console.log('[Kiosk] Auto-typing login credentials...');
-            setNativeValue(userInput, '$AUTOLOGIN_USER');
-            setNativeValue(passInput, '$AUTOLOGIN_PASS');
-            setTimeout(() => {
-                submitBtn.click();
-                loggedIn = true;
-                console.log('[Kiosk] Logged in successfully!');
-            }, 300);
+    // Check for Trusted Networks user button (e.g. 'kiosk') and auto-click it
+    const listItems = queryAllDeep('mwc-list-item, ha-card, [role="button"], button, paper-item, a, .user-list-item');
+    for (const item of listItems) {
+        const txt = (item.textContent || '').trim().toLowerCase();
+        if (txt === 'kiosk' || txt.includes('kiosk') || txt.includes('trusted network')) {
+            console.log('[Kiosk] Clicking trusted login option...');
+            item.click();
+            loggedIn = true;
+            return;
+        }
+    }
+
+    // Auto-type username & password if configured
+    const autologinUser = '$AUTOLOGIN_USER';
+    const autologinPass = '$AUTOLOGIN_PASS';
+    if (autologinUser && autologinPass) {
+        const userInput = querySelectorDeep('ha-credential-login input[name="username"]') || querySelectorDeep('input[name="username"]');
+        const passInput = querySelectorDeep('ha-credential-login input[name="password"]') || querySelectorDeep('input[name="password"]');
+        const submitBtn = querySelectorDeep('ha-credential-login mwc-button') || querySelectorDeep('button[type="submit"]') || querySelectorDeep('mwc-button');
+
+        if (userInput && passInput && submitBtn) {
+            if (userInput.value !== autologinUser) {
+                console.log('[Kiosk] Auto-typing login credentials...');
+                setNativeValue(userInput, autologinUser);
+                setNativeValue(passInput, autologinPass);
+                setTimeout(() => {
+                    submitBtn.click();
+                    loggedIn = true;
+                    console.log('[Kiosk] Logged in successfully!');
+                }, 300);
+            }
         }
     }
 }
 
 const observer = new MutationObserver(() => tryAutoLogin());
 observer.observe(document.documentElement, { childList: true, subtree: true });
-setTimeout(tryAutoLogin, 800);
-setTimeout(tryAutoLogin, 2500);
+setTimeout(tryAutoLogin, 500);
+setTimeout(tryAutoLogin, 1500);
+setTimeout(tryAutoLogin, 3000);
 EOF_EXT_JS
 
-  EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR")
-fi
+EXTRA_CHROME_FLAGS+=("--load-extension=$EXT_DIR")
 
 # Launch Chromium locked in Standalone Application Kiosk mode (--app disables tab strips and Ctrl+T shortcuts)
 exec "$CHROMIUM_BIN" \

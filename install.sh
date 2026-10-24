@@ -283,7 +283,7 @@ $TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/bl_power, /
 $TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/graphics/fb*/blank
 $TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/vcgencmd display_power *
 $TARGET_USER ALL=(ALL) NOPASSWD: /opt/kiosk/screen-control.sh, /opt/kiosk/screen-control.sh *
-$TARGET_USER ALL=(ALL) NOPASSWD: /opt/kiosk/kiosk-config.sh, /usr/local/bin/kiosk-config, /usr/local/bin/kiosk
+$TARGET_USER ALL=(ALL) NOPASSWD: /opt/kiosk/kiosk-config.sh, /usr/local/bin/kiosk-config, /usr/local/bin/kiosk, /usr/bin/kiosk-config, /usr/bin/kiosk
 $TARGET_USER ALL=(ALL) NOPASSWD: /bin/bash /opt/kiosk/kiosk-config.sh *, /usr/bin/bash /opt/kiosk/kiosk-config.sh *
 $TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/ddcutil *
 EOF

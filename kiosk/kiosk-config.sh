@@ -167,8 +167,7 @@ policy = {
     'BookmarkBarEnabled': False,
     'ShowHomeButton': False,
     'HomepageIsNewTabPage': False,
-    'NewTabPageLocation': dash_url,
-    'ExtensionInstallBlocklist': ['*']
+    'NewTabPageLocation': dash_url
 }
 
 for d in policy_dirs:
@@ -203,9 +202,9 @@ update_from_github() {
     apt-get install -y --no-install-recommends gammastep ddcutil grim ffmpeg avahi-daemon libnss-mdns avahi-utils 2>/dev/null || true
     systemctl enable --now avahi-daemon 2>/dev/null || true
 
-    cp -r "$TMP_DIR/kiosk/"* /opt/kiosk/
-    cp "$TMP_DIR/kiosk-config.sh" /opt/kiosk/ 2>/dev/null || true
-    cp "$TMP_DIR/systemd/"* /etc/systemd/system/
+    cp --remove-destination -r "$TMP_DIR/kiosk/"* /opt/kiosk/
+    cp --remove-destination "$TMP_DIR/kiosk-config.sh" /opt/kiosk/ 2>/dev/null || true
+    cp --remove-destination "$TMP_DIR/systemd/"* /etc/systemd/system/
     chmod +x /opt/kiosk/*.sh /opt/kiosk/*.py /opt/kiosk/webui/*.py 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk-config 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk 2>/dev/null || true
