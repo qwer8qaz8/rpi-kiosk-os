@@ -252,6 +252,33 @@ cat << 'EOF_EXT_JS' > "$EXT_DIR/content.js"
 // RPi Kiosk Security, Auto-Login, and Interactive Admin Overlay Extension
 // ==============================================================================
 
+// 0. Single Window Lockdown: Force all links, popups, and window.open to stay in current tab
+try {
+    const _origWindowOpen = window.open;
+    window.open = function(url, target, features) {
+        if (!window.__kiosk_unlocked && url) {
+            window.location.href = url;
+            return window;
+        }
+        return _origWindowOpen ? _origWindowOpen.apply(this, arguments) : null;
+    };
+} catch(e) {}
+
+document.addEventListener('click', function(e) {
+    if (window.__kiosk_unlocked) return;
+    const path = e.composedPath ? e.composedPath() : [];
+    for (const el of path) {
+        if (el && el.tagName === 'A') {
+            if (el.getAttribute('target') === '_blank') {
+                el.setAttribute('target', '_self');
+            }
+            if (el.target && el.target !== '_self') {
+                el.target = '_self';
+            }
+        }
+    }
+}, true);
+
 window.__kiosk_unlocked = false;
 let unlockCountdownTimer = null;
 let unlockExpiresAt = 0;
@@ -649,8 +676,8 @@ window.addEventListener('keydown', function(e) {
             secretBuffer += e.key;
             showCornerIndicator('listening', secretBuffer.replace(/./g, '•'));
 
-            // 1. When user types 'Kiosk' with uppercase K -> open password prompt
-            if (secretBuffer.endsWith('Kiosk')) {
+            // 1. When user types 'Kiosk' or 'kiosk' -> open password prompt
+            if (secretBuffer.toLowerCase().endsWith('kiosk')) {
                 showCornerIndicator('success');
                 setTimeout(() => {
                     hideCornerIndicator();
@@ -1763,19 +1790,17 @@ else
         sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$HOME/.config/chromium/Default/Preferences" 2>/dev/null || true
     fi
 
-    # Ensure WebUI server is answering before launching splash
-    for attempt in {1..30}; do
-        if curl -s -m 1 http://127.0.0.1:8080/splash >/dev/null 2>&1; then
-            break
-        fi
-        sleep 0.2
-    done
+    # Launch Hardware-Accelerated Native GTK3 Splash Screen on Wayland
+    if [ -f "/opt/kiosk/kiosk-native-splash.py" ]; then
+        echo "[kiosk] Displaying Native GTK3 Splash Screen..."
+        python3 /opt/kiosk/kiosk-native-splash.py "$DASHBOARD_URL" || true
+    fi
 
-    # Launch Chromium with custom boot splash screen locked in Fullscreen Kiosk Mode
+    # Launch Chromium directly into Home Assistant Dashboard in Fullscreen Kiosk Mode
     exec "$CHROMIUM_BIN" \
       "${EXTRA_CHROME_FLAGS[@]}" \
       --kiosk \
-      --app="http://127.0.0.1:8080/splash" \
+      --app="$DASHBOARD_URL" \
       --start-fullscreen \
       --noerrdialogs \
       --disable-infobars \

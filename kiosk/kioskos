@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# kioskos - The Official KioskOS CLI Management Tool
+# ==============================================================================
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+CONFIG_FILE="/etc/kiosk/config.json"
+[ ! -f "$CONFIG_FILE" ] && CONFIG_FILE="/opt/kiosk/config.json"
+
+show_banner() {
+cat << "EOF"
+ ██╗  ██╗██╗ ██████╗ ███████╗██╗  ██╗ ██████╗ ███████╗
+ ██║ ██╔╝██║██╔═══██╗██╔════╝██║ ██╔╝██╔═══██╗██╔════╝
+ █████╔╝ ██║██║   ██║███████╗█████╔╝ ██║   ██║███████╗
+ ██╔═██╗ ██║██║   ██║╚════██║██╔═██╗ ██║   ██║╚════██║
+ ██║  ██╗██║╚██████╔╝███████║██║  ██╗╚██████╔╝███████║
+ ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+                KioskOS Appliance Edition
+EOF
+}
+
+cmd="${1:-}"
+
+case "$cmd" in
+  status)
+    show_banner
+    echo -e "${BOLD}System Status:${NC}"
+    echo -e "  • Dashboard URL: ${CYAN}$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('dashboard_url', 'Not configured'))" 2>/dev/null || echo 'Unknown')${NC}"
+    echo -e "  • Screen Power:  $(sudo /usr/local/bin/kiosk-screen status 2>/dev/null || echo 'ON')"
+    echo -e "  • IP Address:    ${GREEN}$(hostname -I | awk '{print $1}')${NC}"
+    echo -e "  • Kiosk Display: $(systemctl is-active kiosk-display 2>/dev/null || echo 'unknown')"
+    echo -e "  • Kiosk WebUI:   $(systemctl is-active kiosk-webui 2>/dev/null || echo 'unknown') (http://$(hostname -I | awk '{print $1}'):8080)"
+    echo -e "  • Mode:          $([ -f /tmp/kiosk-admin-workstation ] && echo "${YELLOW}Admin Desktop Mode${NC}" || echo "${GREEN}Fullscreen Locked Kiosk${NC}")"
+    ;;
+
+  url)
+    new_url="$2"
+    if [ -z "$new_url" ]; then
+      echo -e "${RED}Error:${NC} Missing URL. Usage: kioskos url <dashboard_url>"
+      exit 1
+    fi
+    echo -e "${CYAN}Setting Dashboard URL to:${NC} $new_url"
+    python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['dashboard_url'] = '$new_url'
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+" 2>/dev/null || sudo python3 -c "
+import json
+for p in ['/etc/kiosk/config.json', '/opt/kiosk/config.json']:
+    try:
+        with open(p, 'r') as f: cfg = json.load(f)
+        cfg['dashboard_url'] = '$new_url'
+        with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+    except Exception: pass
+"
+    echo -e "${GREEN}✓ Dashboard URL updated.${NC} Reloading display..."
+    sudo systemctl restart kiosk-display
+    ;;
+
+  update)
+    echo -e "${CYAN}[kioskos] Launching System Update...${NC}"
+    if [ -n "$WAYLAND_DISPLAY" ] || [ -f /run/user/1000/wayland-0 ]; then
+        /opt/kiosk/apply-update.sh
+    else
+        sudo /opt/kiosk/kiosk-config.sh --update
+        sudo systemctl reboot
+    fi
+    ;;
+
+  admin)
+    echo -e "${CYAN}[kioskos] Switching to Admin Desktop Mode...${NC}"
+    /opt/kiosk/start-desktop.sh
+    ;;
+
+  lock)
+    echo -e "${CYAN}[kioskos] Locking back to Fullscreen Kiosk Mode...${NC}"
+    /opt/kiosk/lock-kiosk.sh
+    ;;
+
+  restart)
+    echo -e "${CYAN}[kioskos] Restarting Kiosk Display...${NC}"
+    sudo systemctl restart kiosk-display
+    ;;
+
+  reboot)
+    echo -e "${YELLOW}[kioskos] Rebooting Raspberry Pi...${NC}"
+    sudo systemctl reboot
+    ;;
+
+  backup)
+    echo -e "${CYAN}[kioskos] Creating Clean System Backup (secrets stripped)...${NC}"
+    /opt/kiosk/backup-kiosk.sh
+    ;;
+
+  *)
+    show_banner
+    echo -e "${BOLD}Usage:${NC} kioskos <command> [options]\n"
+    echo -e "Commands:"
+    echo -e "  ${GREEN}status${NC}        Show current KioskOS status, dashboard URL, and services"
+    echo -e "  ${GREEN}url <URL>${NC}     Update Home Assistant / Kiosk dashboard URL and reload"
+    echo -e "  ${GREEN}update${NC}        Check for updates, display native update screen & reboot"
+    echo -e "  ${GREEN}admin${NC}         Switch into Admin Desktop Mode (Chrome + Control Center)"
+    echo -e "  ${GREEN}lock${NC}          Lock back into Fullscreen Single-App Kiosk Mode"
+    echo -e "  ${GREEN}restart${NC}       Restart the kiosk display compositor"
+    echo -e "  ${GREEN}reboot${NC}        Reboot the Raspberry Pi system"
+    echo -e "  ${GREEN}backup${NC}        Generate clean backup tarball without secrets"
+    echo ""
+    ;;
+esac

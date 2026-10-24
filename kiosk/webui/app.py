@@ -87,6 +87,9 @@ PUBLIC_ENDPOINTS = {
     "api_update_status",
     "api_camera_snapshot",
     "api_status",
+    "api_admin_trigger_listener",
+    "api_admin_prompt_exit",
+    "api_display_navigate",
     "static"
 }
 
@@ -464,35 +467,52 @@ def api_settings():
     return jsonify({"success": True, "message": "Settings saved successfully"})
 
 
+LAST_DISPLAY_SNAPSHOT_TIME = 0
+LAST_CAMERA_SNAPSHOT_TIME = 0
+
 UPDATE_STATE = {
     "updating": False,
-    "status_text": "Idle"
+    "in_progress": False,
+    "status": "idle",
+    "step": "Idle",
+    "status_text": "Idle",
+    "progress": 0
 }
 
 @app.route("/api/camera/snapshot")
 def api_camera_snapshot():
+    global LAST_DISPLAY_SNAPSHOT_TIME, LAST_CAMERA_SNAPSHOT_TIME
     snapshot_png = Path("/tmp/kiosk-snapshot.png")
     snapshot_jpg = Path("/tmp/kiosk-snapshot.jpg")
+    now = time.time()
     try:
+        # Check physical camera (e.g. USB webcam or Pi camera module) with 2.5s cache
         if Path("/dev/video0").exists():
-            subprocess.run([
-                "ffmpeg", "-y", "-f", "v4l2", "-i", "/dev/video0",
-                "-frames:v", "1", "-vf", "scale=1280:-1", "-q:v", "3",
-                str(snapshot_jpg)
-            ], capture_output=True, timeout=3)
+            if now - LAST_CAMERA_SNAPSHOT_TIME > 2.5 or not snapshot_jpg.exists():
+                subprocess.run([
+                    "ffmpeg", "-y", "-f", "v4l2", "-i", "/dev/video0",
+                    "-frames:v", "1", "-vf", "scale=1280:-1", "-q:v", "3",
+                    str(snapshot_jpg)
+                ], capture_output=True, timeout=3)
+                LAST_CAMERA_SNAPSHOT_TIME = now
             if snapshot_jpg.exists():
-                return send_file(snapshot_jpg, mimetype="image/jpeg", max_age=1)
+                return send_file(snapshot_jpg, mimetype="image/jpeg", max_age=2)
 
-        # Live Wayland screen capture via grim
-        env = dict(os.environ)
-        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
-        env["WAYLAND_DISPLAY"] = "wayland-0"
-        res = subprocess.run(["grim", str(snapshot_png)], env=env, capture_output=True, timeout=3)
-        if snapshot_png.exists() and res.returncode == 0:
-            return send_file(snapshot_png, mimetype="image/png", max_age=1)
+        # Only capture Wayland display with grim if explicitly requested with ?display=1
+        if request.args.get("display") in ["1", "true", "yes"]:
+            now = time.time()
+            if now - LAST_DISPLAY_SNAPSHOT_TIME > 3.0 or not snapshot_png.exists():
+                env = dict(os.environ)
+                env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+                env["WAYLAND_DISPLAY"] = "wayland-0"
+                res = subprocess.run(["grim", str(snapshot_png)], env=env, capture_output=True, timeout=3)
+                if res.returncode == 0:
+                    LAST_DISPLAY_SNAPSHOT_TIME = now
+            if snapshot_png.exists():
+                return send_file(snapshot_png, mimetype="image/png", max_age=2)
     except Exception as e:
         logger.warning(f"Snapshot error: {e}")
-    return jsonify({"error": "No camera or display snapshot available"}), 503
+    return jsonify({"error": "No physical camera attached"}), 404
 
 @app.route("/updating")
 def updating_page():
@@ -557,17 +577,22 @@ def api_update_status():
 
 def navigate_chromium(url):
     try:
-        import urllib.request
-        pages = json.loads(urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=2).read())
-        for p in pages:
-            if p.get("type") == "page" and "id" in p:
-                pid = p["id"]
-                nav_req = urllib.request.Request(
-                    f"http://127.0.0.1:9222/json/navigate?url={urllib.parse.quote(url)}",
-                    headers={"User-Agent": "kiosk-webui"}
-                )
-                urllib.request.urlopen(nav_req, timeout=2)
-                return True
+        import urllib.request, urllib.parse
+        curr = json.loads(urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=2).read().decode())
+        old_ids = [p["id"] for p in curr if p.get("type") == "page"]
+        encoded_url = urllib.parse.quote(url, safe=":/?=&%#@[]+-_~")
+        req = urllib.request.Request(f"http://127.0.0.1:9222/json/new?{encoded_url}", method="PUT")
+        new_page = json.loads(urllib.request.urlopen(req, timeout=2).read().decode())
+        new_id = new_page.get("id")
+        if new_id:
+            urllib.request.urlopen(f"http://127.0.0.1:9222/json/activate/{new_id}", timeout=2)
+        for oid in old_ids:
+            if oid != new_id:
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:9222/json/close/{oid}", timeout=2)
+                except Exception:
+                    pass
+        return True
     except Exception as e:
         logger.warning(f"CDP navigate error: {e}")
     return False
@@ -700,16 +725,24 @@ def api_camera_touch_calibrate():
 
 @app.route("/api/update", methods=["POST"])
 def api_update():
-    logger.info("Executing system update from GitHub...")
+    logger.info("Executing system update via native KioskOS updater...")
     UPDATE_STATE["updating"] = True
+    UPDATE_STATE["in_progress"] = True
+    UPDATE_STATE["status"] = "updating"
     UPDATE_STATE["status_text"] = "Downloading and applying update from GitHub..."
-    cmd = "/opt/kiosk/kiosk-config.sh --update"
-    res = subprocess.run(["sudo", "bash", "-c", cmd], capture_output=True, text=True)
-    UPDATE_STATE["updating"] = False
-    if res.returncode == 0:
-        return jsonify({"success": True, "message": "Updated to latest version from GitHub successfully!"})
+
+    if os.path.exists("/opt/kiosk/apply-update.sh"):
+        subprocess.Popen(["/bin/bash", "/opt/kiosk/apply-update.sh"])
+    elif os.path.exists("/opt/kiosk/kiosk-native-update.py"):
+        env = dict(os.environ)
+        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
+        env["WAYLAND_DISPLAY"] = "wayland-0"
+        subprocess.Popen(["python3", "/opt/kiosk/kiosk-native-update.py"], env=env)
     else:
-        return jsonify({"success": False, "error": res.stderr or "Update failed. Check internet connection."}), 500
+        cmd = "/opt/kiosk/kiosk-config.sh --update"
+        subprocess.Popen(["sudo", "bash", "-c", cmd])
+
+    return jsonify({"success": True, "message": "Native KioskOS update initiated. Screen will display progress and reboot."})
 
 
 @app.route("/api/lockdown", methods=["POST"])

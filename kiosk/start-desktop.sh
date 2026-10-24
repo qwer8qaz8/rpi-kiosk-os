@@ -35,25 +35,17 @@ fi
 
 sleep 0.4
 
-# 4. Launch Independent Native Window 1: Standalone Control Center (Left)
-nohup /usr/bin/chromium \
-  --ozone-platform=wayland \
-  --user-data-dir=/tmp/chromium-kiosk-settings \
-  --app="http://127.0.0.1:8080/" \
-  --window-size=920,680 \
-  --window-position=50,60 \
-  --noerrdialogs \
-  --disable-infobars \
-  --no-first-run \
-  --password-store=basic \
-  --disk-cache-dir=/tmp/chromium-cache >/dev/null 2>&1 &
+# 4. Launch Native Linux Window 1: Native KioskOS Control Center (Left)
+if [ -f /opt/kiosk/kiosk-native-admin.py ]; then
+    python3 /opt/kiosk/kiosk-native-admin.py &
+fi
 
-# 5. Launch Independent Native Window 2: Real Google Chrome Browser on Desktop (Right)
+# 5. Launch Native Window 2: Real Google Chrome Browser on Desktop (Right)
 nohup /usr/bin/chromium \
   --ozone-platform=wayland \
   --user-data-dir=/tmp/chromium-kiosk-browser \
-  --window-size=920,680 \
-  --window-position=980,60 \
+  --window-size=1000,720 \
+  --window-position=850,60 \
   --noerrdialogs \
   --disable-infobars \
   --no-first-run \

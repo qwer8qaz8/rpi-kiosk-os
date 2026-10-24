@@ -27,16 +27,13 @@
   </windowRules>
 
   <keyboard>
-    <!-- Native Compositor Keybinds: Ctrl+Alt+= and Ctrl+= to exit or toggle Admin Desktop Mode -->
-    <keybind key="C-A-equal">
-      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
-    </keybind>
-    <keybind key="C-equal">
-      <action name="Execute" command="/opt/kiosk/toggle-admin.sh" />
-    </keybind>
     <!-- Restart Kiosk Keybind: Ctrl+Alt+R -->
     <keybind key="C-A-r">
       <action name="Execute" command="/usr/bin/sudo /bin/systemctl restart kiosk-display" />
+    </keybind>
+    <!-- Emergency Lock Keybind: Ctrl+Alt+L -->
+    <keybind key="C-A-l">
+      <action name="Execute" command="/opt/kiosk/lock-kiosk.sh" />
     </keybind>
     <!-- Reboot Keybind: Ctrl+Alt+Delete -->
     <keybind key="C-A-Delete">

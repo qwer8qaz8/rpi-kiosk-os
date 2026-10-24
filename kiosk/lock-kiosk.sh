@@ -18,6 +18,7 @@ fi
 pkill -9 -f waybar 2>/dev/null || true
 pkill -9 -f swaybg 2>/dev/null || true
 pkill -9 -f foot 2>/dev/null || true
+pkill -9 -f kiosk-native-admin.py 2>/dev/null || true
 pkill -9 -f chromium 2>/dev/null || true
 sleep 0.5
 

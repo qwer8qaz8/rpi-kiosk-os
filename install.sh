@@ -251,6 +251,8 @@ apt-get install -y --no-install-recommends \
   ddcutil \
   grim \
   ffmpeg \
+  python3-gi \
+  gir1.2-gtk-3.0 \
   avahi-daemon \
   libnss-mdns \
   avahi-utils \
@@ -317,6 +319,12 @@ chmod +x /opt/kiosk/start-desktop.sh 2>/dev/null || true
 chmod +x /opt/kiosk/lock-kiosk.sh 2>/dev/null || true
 chmod +x /opt/kiosk/toggle-admin.sh 2>/dev/null || true
 chmod +x /opt/kiosk/prompt-exit.sh 2>/dev/null || true
+chmod +x /opt/kiosk/apply-update.sh 2>/dev/null || true
+chmod +x /opt/kiosk/backup-kiosk.sh 2>/dev/null || true
+chmod +x /opt/kiosk/kioskos 2>/dev/null || true
+chmod +x /opt/kiosk/kiosk-native-splash.py 2>/dev/null || true
+chmod +x /opt/kiosk/kiosk-native-update.py 2>/dev/null || true
+chmod +x /opt/kiosk/kiosk-native-admin.py 2>/dev/null || true
 
 # Deploy labwc and waybar configurations to /etc/kiosk
 mkdir -p /etc/kiosk/labwc /etc/kiosk/waybar
@@ -324,10 +332,24 @@ cp -r /opt/kiosk/labwc/* /etc/kiosk/labwc/ 2>/dev/null || true
 cp -r /opt/kiosk/waybar/* /etc/kiosk/waybar/ 2>/dev/null || true
 chmod +x /opt/kiosk/webui/app.py
 chmod +x /opt/kiosk/kiosk-config.sh 2>/dev/null || true
+ln -sf /opt/kiosk/kioskos /usr/local/bin/kioskos 2>/dev/null || true
+ln -sf /opt/kiosk/kioskos /usr/bin/kioskos 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk-config 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/local/bin/kiosk 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk-config 2>/dev/null || true
 ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk 2>/dev/null || true
+
+# Apply KioskOS Brand to system MOTD & Issue
+cat << "EOF_MOTD" > /etc/motd
+ ██╗  ██╗██╗ ██████╗ ███████╗██╗  ██╗ ██████╗ ███████╗
+ ██║ ██╔╝██║██╔═══██╗██╔════╝██║ ██╔╝██╔═══██╗██╔════╝
+ █████╔╝ ██║██║   ██║███████╗█████╔╝ ██║   ██║███████╗
+ ██╔═██╗ ██║██║   ██║╚════██║██╔═██╗ ██║   ██║╚════██║
+ ██║  ██╗██║╚██████╔╝███████║██║  ██╗╚██████╔╝███████║
+ ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+                KioskOS Appliance Edition
+EOF_MOTD
+cp /etc/motd /etc/issue 2>/dev/null || true
 
 # Write /etc/kiosk/config.json
 cat << EOF > /etc/kiosk/config.json

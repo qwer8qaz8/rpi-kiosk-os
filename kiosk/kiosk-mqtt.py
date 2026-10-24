@@ -528,40 +528,42 @@ class KioskMQTTDaemon:
         }
         self.client.publish(f"{self.base_topic}/system/state", json.dumps(telemetry), qos=1, retain=True)
 
-        try:
-            import urllib.request
-            snap_data = urllib.request.urlopen("http://127.0.0.1:8080/api/camera/snapshot", timeout=2).read()
-            if snap_data:
-                self.client.publish(f"{self.base_topic}/camera/image", snap_data, qos=0, retain=True)
-        except Exception:
-            pass
+        if cfg.get("camera_publish_enabled", False) and Path("/dev/video0").exists():
+            try:
+                import urllib.request
+                snap_data = urllib.request.urlopen("http://127.0.0.1:8080/api/camera/snapshot", timeout=2).read()
+                if snap_data:
+                    self.client.publish(f"{self.base_topic}/camera/image", snap_data, qos=0, retain=True)
+            except Exception:
+                pass
 
     def check_motion_and_nightmode(self):
         global LAST_FRAME_SAMPLE, MOTION_UNTIL, NIGHT_SCREEN_OFF
         cfg = load_config()
 
-        # 1. Camera Motion Detection
-        try:
-            import urllib.request
-            req = urllib.request.Request("http://127.0.0.1:8080/api/camera/snapshot", headers={"User-Agent": "kiosk-mqtt"})
-            raw_img = urllib.request.urlopen(req, timeout=1.5).read()
-            if raw_img and len(raw_img) > 1000:
-                step = max(1, len(raw_img) // 200)
-                sample = raw_img[100:len(raw_img)-100:step]
-                if LAST_FRAME_SAMPLE and len(LAST_FRAME_SAMPLE) == len(sample):
-                    diffs = sum(1 for a, b in zip(LAST_FRAME_SAMPLE, sample) if abs(a - b) > 25)
-                    if diffs > (len(sample) * 0.12):
-                        now = time.time()
-                        if now > MOTION_UNTIL:
-                            self.client.publish(f"{self.base_topic}/motion/state", "ON", qos=1, retain=True)
-                        MOTION_UNTIL = now + 15
-                        if NIGHT_SCREEN_OFF:
-                            run_screen_cmd("on")
-                            NIGHT_SCREEN_OFF = False
-                            self.client.publish(f"{self.base_topic}/screen/state", "ON", qos=1, retain=True)
-                LAST_FRAME_SAMPLE = sample
-        except Exception:
-            pass
+        # 1. Camera Motion Detection (opt-in only to conserve CPU)
+        if cfg.get("camera_motion_enabled", False) and Path("/dev/video0").exists():
+            try:
+                import urllib.request
+                req = urllib.request.Request("http://127.0.0.1:8080/api/camera/snapshot", headers={"User-Agent": "kiosk-mqtt"})
+                raw_img = urllib.request.urlopen(req, timeout=1.5).read()
+                if raw_img and len(raw_img) > 1000:
+                    step = max(1, len(raw_img) // 200)
+                    sample = raw_img[100:len(raw_img)-100:step]
+                    if LAST_FRAME_SAMPLE and len(LAST_FRAME_SAMPLE) == len(sample):
+                        diffs = sum(1 for a, b in zip(LAST_FRAME_SAMPLE, sample) if abs(a - b) > 25)
+                        if diffs > (len(sample) * 0.12):
+                            now = time.time()
+                            if now > MOTION_UNTIL:
+                                self.client.publish(f"{self.base_topic}/motion/state", "ON", qos=1, retain=True)
+                            MOTION_UNTIL = now + 15
+                            if NIGHT_SCREEN_OFF:
+                                run_screen_cmd("on")
+                                NIGHT_SCREEN_OFF = False
+                                self.client.publish(f"{self.base_topic}/screen/state", "ON", qos=1, retain=True)
+                    LAST_FRAME_SAMPLE = sample
+            except Exception:
+                pass
 
         if MOTION_UNTIL > 0 and time.time() > MOTION_UNTIL:
             self.client.publish(f"{self.base_topic}/motion/state", "OFF", qos=1, retain=True)
