@@ -159,9 +159,10 @@ cat << 'EOF_MANIFEST' > "$EXT_DIR/manifest.json"
   "manifest_version": 3,
   "name": "HA Kiosk Lock",
   "version": "2.0",
+  "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_start"
     }
@@ -294,10 +295,14 @@ function attemptHaLogin() {
 function hideSandwich() {
   const styles = `
     ha-menu-button,
+    ha-button-menu,
     [slot="navigationIcon"],
     mwc-icon-button[slot="navigationIcon"],
     paper-icon-button[slot="navigationIcon"],
     ha-icon-button[slot="navigationIcon"],
+    app-toolbar > ha-menu-button,
+    app-toolbar > mwc-icon-button:first-child,
+    app-toolbar > ha-icon-button:first-child,
     ha-sidebar,
     .mdc-drawer,
     ha-drawer > [slot="drawer"] {
@@ -309,21 +314,35 @@ function hideSandwich() {
       opacity: 0 !important;
       pointer-events: none !important;
     }
+
+    /* Clean Modern UI: completely hide ugly scrollbars everywhere */
+    * {
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+    *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
   `;
 
   function injectCSS(root) {
     if (!root) return;
     try {
-      if (root.getElementById && !root.getElementById('ha-kiosk-hide-sandwich')) {
+      if (root.querySelector && !root.querySelector('#ha-kiosk-hide-sandwich')) {
         const s = document.createElement('style');
         s.id = 'ha-kiosk-hide-sandwich';
         s.textContent = styles;
         root.appendChild(s);
       }
-      const menuButtons = root.querySelectorAll ? root.querySelectorAll('ha-menu-button, [slot="navigationIcon"], ha-sidebar') : [];
+      const menuButtons = root.querySelectorAll ? root.querySelectorAll('ha-menu-button, ha-button-menu, [slot="navigationIcon"], ha-sidebar, [aria-label="Sidebar"], [aria-label="Open sidebar"], [title="Sidebar"]') : [];
       menuButtons.forEach(btn => {
         btn.style.setProperty('display', 'none', 'important');
         btn.style.setProperty('visibility', 'hidden', 'important');
+        btn.style.setProperty('width', '0', 'important');
+        btn.style.setProperty('height', '0', 'important');
+        try { btn.remove(); } catch(e) {}
       });
     } catch(e) {}
   }
@@ -401,6 +420,7 @@ while true; do
       --kiosk \
       --app="$TARGET_LAUNCH_URL" \
       --start-fullscreen \
+      --hide-scrollbars \
       --noerrdialogs \
       --disable-infobars \
       --no-first-run \

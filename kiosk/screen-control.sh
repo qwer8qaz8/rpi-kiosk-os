@@ -179,6 +179,7 @@ set_screen_power() {
 
   if [ "$state" = "on" ]; then
     # Wayland DPMS Power ON
+    pkill -f "kiosk-wake-watcher.py" 2>/dev/null || true
     pkill -f "kiosk-mouse-wake" 2>/dev/null || true
     if command -v wlopm >/dev/null 2>&1; then
       for out in $(get_all_outputs); do
@@ -186,32 +187,22 @@ set_screen_power() {
       done
     fi
 
-    # 1. Raspberry Pi HDMI display power ON via VideoCore
-    if command -v vcgencmd >/dev/null 2>&1; then
-      vcgencmd display_power 1 2>/dev/null || true
-    fi
-
-    # 2. Backlight on (DSI touchscreens)
+    # 1. Backlight on (DSI touchscreens)
     set_backlight_power 0
 
-    # 3. Framebuffer unblank
+    # 2. Framebuffer unblank
     for fb in /sys/class/graphics/fb*; do
       if [ -f "$fb/blank" ]; then
         sudo tee "$fb/blank" >/dev/null <<< 0 2>/dev/null || echo 0 > "$fb/blank" 2>/dev/null || true
       fi
     done
 
-    # 4. ddcutil monitor wake (HDMI)
-    if command -v ddcutil >/dev/null 2>&1; then
-      nohup ddcutil setvcp d6 1 >/dev/null 2>&1 &
-    fi
-
-    # 5. Generic Linux console unblank
+    # 3. Generic Linux console unblank
     if command -v setterm >/dev/null 2>&1; then
       setterm --blank poke 2>/dev/null || true
     fi
 
-    # 6. Restore brightness
+    # 4. Restore brightness
     b_val=$(get_brightness)
     set_brightness "$b_val"
 
@@ -231,58 +222,8 @@ except Exception:
     echo "Screen powered ON"
 
   elif [ "$state" = "off" ]; then
-    # Wayland DPMS Power OFF
-    if command -v wlopm >/dev/null 2>&1; then
-      for out in $(get_all_outputs); do
-        run_wayland_cmd wlopm --off "$out" 2>/dev/null || true
-      done
-    fi
-
-    # 1. Raspberry Pi HDMI display power OFF via VideoCore
-    if command -v vcgencmd >/dev/null 2>&1; then
-      vcgencmd display_power 0 2>/dev/null || true
-    fi
-
-    # 2. Backlight off (DSI touchscreens)
-    set_backlight_power 1
-
-    # 3. Framebuffer blank
-    for fb in /sys/class/graphics/fb*; do
-      if [ -f "$fb/blank" ]; then
-        sudo tee "$fb/blank" >/dev/null <<< 1 2>/dev/null || echo 1 > "$fb/blank" 2>/dev/null || true
-      fi
-    done
-
-    # 4. ddcutil monitor sleep (HDMI)
-    if command -v ddcutil >/dev/null 2>&1; then
-      nohup ddcutil setvcp d6 5 >/dev/null 2>&1 &
-    fi
-
-    # 5. Generic Linux console blank
-    if command -v setterm >/dev/null 2>&1; then
-      setterm --blank force 2>/dev/null || true
-    fi
-
-    # Auto-lock: If monitor turns off while in Admin Desktop Mode, auto-lock back to Kiosk immediately
-    if [ -f /tmp/kiosk-admin-workstation ]; then
-      echo "[screen-control] Monitor turned off: Auto-locking Admin Mode back to Kiosk..."
-      /opt/kiosk/lock-kiosk.sh >/dev/null 2>&1 &
-    fi
-
-    if [ -f "$CONFIG_FILE" ]; then
-      python3 -c "
-import json
-try:
-    with open('$CONFIG_FILE', 'r') as f:
-        data = json.load(f)
-    data['screen_on'] = False
-    with open('$CONFIG_FILE', 'w') as f:
-        json.dump(data, f, indent=2)
-except Exception:
-    pass
-" 2>/dev/null || true
-    fi
-    echo "Screen powered OFF"
+    # Safely sleep screen via Wayland DPMS without crashing DRM or rebooting Pi
+    set_screen_sleep
   fi
 }
 
@@ -362,14 +303,18 @@ get_status() {
 
 set_screen_sleep() {
   echo "[screen] Putting display to sleep via Wayland DPMS..."
-  # 1. Turn off monitor via Wayland DPMS
+  # 1. Kill any existing wake watchers
+  pkill -f "kiosk-wake-watcher.py" 2>/dev/null || true
+  pkill -f "kiosk-mouse-wake" 2>/dev/null || true
+
+  # 2. Turn off monitor via Wayland DPMS (stops HDMI TMDS clock / video signal)
   if command -v wlopm >/dev/null 2>&1; then
     for out in $(get_all_outputs); do
       run_wayland_cmd wlopm --off "$out" 2>/dev/null || true
     done
   fi
 
-  # 2. Update config screen_on = false
+  # 3. Update config screen_on = false
   if [ -f "$CONFIG_FILE" ]; then
     python3 -c "
 import json
@@ -384,19 +329,9 @@ except Exception:
 " 2>/dev/null || true
   fi
 
-  # 3. Kill any older wake watcher
-  pkill -f "kiosk-mouse-wake" 2>/dev/null || true
-
-  # 4. Asynchronously wait for mouse movement or click to wake
-  (
-    exec -a "kiosk-mouse-wake" bash -c '
-      if [ -e /dev/input/mice ]; then
-        read -r -n 1 < /dev/input/mice 2>/dev/null || true
-        /opt/kiosk/screen-control.sh on >/dev/null 2>&1
-      fi
-    '
-  ) &
-  echo "Screen sleeping. Move mouse or touch to wake."
+  # 4. Asynchronously launch exclusive keyboard wake watcher in background
+  nohup /usr/bin/python3 /opt/kiosk/kiosk-wake-watcher.py </dev/null >/dev/null 2>&1 &
+  echo "Screen sleeping. Press any key on keyboard to wake."
 }
 
 case "$ACTION" in
