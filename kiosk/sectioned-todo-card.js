@@ -1,7 +1,14 @@
 /**
  * sectioned-todo-card.js
  * High-performance, Unified Sectioned To-Do List Lovelace Card for Home Assistant
- * Allows full management of sections (Add, Rename, Delete) and tasks within each section.
+ * Features:
+ * - Dynamic customizable sections (Add, Rename, Delete)
+ * - Tasks within sections (Add, Check-off, Delete)
+ * - Daily Repeating Tasks:
+ *   - Toggle [🔁 Daily] when adding, or toggle on any task item
+ *   - Displays stylish [🔁 Daily] badge
+ *   - At end-of-day / midnight: ALL daily tasks (finished & unfinished) are removed
+ *     and re-added as non-finished (needs_action), while non-daily tasks are untouched!
  */
 
 const ICON_EDIT = `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align: middle;"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg>`;
@@ -9,6 +16,8 @@ const ICON_EDIT = `<svg viewBox="0 0 24 24" width="15" height="15" fill="current
 const ICON_TRASH = `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align: middle;"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg>`;
 
 const ICON_PLUS = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 3px;"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>`;
+
+const ICON_REPEAT = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align: middle; margin-right: 2px;"><path d="M17,17H7V14L3,18L7,22V19H19V13H17M7,7H17V10L21,6L17,2V5H5V11H7V7Z"/></svg>`;
 
 class SectionedTodoCard extends HTMLElement {
   constructor() {
@@ -23,6 +32,24 @@ class SectionedTodoCard extends HTMLElement {
     this._showAddSection = false;
     this._editingSection = null;
     this._confirmDeleteSection = null;
+    this._isDailyNewTask = false;
+    this._resetting = false;
+    this._dailyResetTimer = null;
+  }
+
+  connectedCallback() {
+    if (!this._dailyResetTimer) {
+      this._dailyResetTimer = setInterval(() => {
+        this._checkDailyReset();
+      }, 30000);
+    }
+  }
+
+  disconnectedCallback() {
+    if (this._dailyResetTimer) {
+      clearInterval(this._dailyResetTimer);
+      this._dailyResetTimer = null;
+    }
   }
 
   setConfig(config) {
@@ -49,6 +76,14 @@ class SectionedTodoCard extends HTMLElement {
     }
   }
 
+  _getTodayStr() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
   async _fetchItems() {
     if (!this._hass || !this._config.entity) return;
     try {
@@ -59,6 +94,7 @@ class SectionedTodoCard extends HTMLElement {
       if (res && res.items) {
         this._items = res.items;
         this._extractSections();
+        await this._checkDailyReset();
         this._render();
       }
     } catch (err) {
@@ -68,39 +104,132 @@ class SectionedTodoCard extends HTMLElement {
 
   _extractSections() {
     this._items.forEach(item => {
-      const m = item.summary.match(/^\[(.*?)\]\s*(.*)$/);
-      if (m && m[1]) {
-        this._sections.add(m[1].trim());
+      const parsed = this._parseItem(item);
+      if (!parsed.isPlaceholder && parsed.section && parsed.section !== 'System') {
+        this._sections.add(parsed.section);
       }
     });
   }
 
   _parseItem(item) {
-    const m = item.summary.match(/^\[(.*?)\]\s*(.*)$/);
+    const rawSummary = item.summary || '';
+    const m = rawSummary.match(/^\[(.*?)\]\s*(.*)$/);
+    let section = 'General';
+    let text = rawSummary;
+
     if (m && m[1]) {
-      return {
-        uid: item.uid,
-        section: m[1].trim(),
-        text: m[2].trim(),
-        status: item.status,
-        isPlaceholder: m[2].trim() === '__empty__'
-      };
+      section = m[1].trim();
+      text = m[2].trim();
     }
+
+    const isSystem = section === 'System' || text === '__empty__' || text.includes('__daily_reset_');
+    const isDaily = /\[daily\]/i.test(text) || text.includes('🔁') || /\[daily\]/i.test(rawSummary);
+    const cleanText = text.replace(/\[daily\]/gi, '').replace(/🔁/g, '').trim();
+
     return {
       uid: item.uid,
-      section: 'General',
-      text: item.summary,
+      section: section,
+      text: cleanText || text,
+      rawText: text,
       status: item.status,
-      isPlaceholder: item.summary === '__empty__'
+      isDaily: isDaily,
+      isPlaceholder: isSystem
     };
   }
 
-  async _addItem(section, text) {
+  /**
+   * Daily Reset Engine
+   * Detects when a new calendar day has started.
+   * Removes all finished and unfinished [Daily] tasks and re-adds them as non-finished.
+   * Completely preserves non-daily tasks.
+   */
+  async _checkDailyReset() {
+    if (!this._hass || !this._config.entity || this._resetting) return;
+    const todayStr = this._getTodayStr();
+    const todayMarker = `__daily_reset_${todayStr}__`;
+
+    // Check if reset marker for today is already recorded
+    const hasTodayMarker = this._items.some(it => it.summary && it.summary.includes(todayMarker));
+    if (hasTodayMarker) return;
+
+    this._resetting = true;
+    try {
+      // Find old marker uids to clean up
+      const oldMarkers = this._items
+        .filter(it => it.summary && it.summary.includes('__daily_reset_') && !it.summary.includes(todayMarker))
+        .map(it => it.uid);
+
+      if (oldMarkers.length > 0) {
+        await this._hass.callService('todo', 'remove_item', {
+          entity_id: this._config.entity,
+          item: oldMarkers
+        });
+      }
+
+      // Collect all daily tasks (both completed and needs_action)
+      const parsed = this._items.map(it => this._parseItem(it));
+      const dailyTasks = parsed.filter(it => it.isDaily && !it.isPlaceholder);
+
+      // Remove each daily task and re-add fresh as non-finished (needs_action)
+      for (const task of dailyTasks) {
+        await this._hass.callService('todo', 'remove_item', {
+          entity_id: this._config.entity,
+          item: [task.uid]
+        });
+        const summary = `[${task.section}] [Daily] ${task.text}`;
+        await this._hass.callService('todo', 'add_item', {
+          entity_id: this._config.entity,
+          item: summary
+        });
+      }
+
+      // Record marker for today
+      await this._hass.callService('todo', 'add_item', {
+        entity_id: this._config.entity,
+        item: `[System] ${todayMarker}`
+      });
+
+      // Refetch clean items
+      const res = await this._hass.callWS({
+        type: 'todo/item/list',
+        entity_id: this._config.entity
+      });
+      if (res && res.items) {
+        this._items = res.items;
+      }
+    } catch (err) {
+      console.warn('[sectioned-todo-card] Error in daily reset:', err);
+    } finally {
+      this._resetting = false;
+    }
+  }
+
+  async _addItem(section, text, isDaily = false) {
     if (!text || !text.trim()) return;
-    const summary = `[${section}] ${text.trim()}`;
+    let cleanText = text.trim();
+    const alreadyDaily = /\[daily\]/i.test(cleanText) || cleanText.includes('🔁');
+    if (isDaily && !alreadyDaily) {
+      cleanText = `[Daily] ${cleanText}`;
+    }
+    const summary = `[${section}] ${cleanText}`;
     await this._hass.callService('todo', 'add_item', {
       entity_id: this._config.entity,
       item: summary
+    });
+    this._isDailyNewTask = false;
+    await this._fetchItems();
+  }
+
+  async _toggleDaily(uid, rawText, isCurrentlyDaily, section) {
+    const clean = rawText.replace(/\[daily\]/gi, '').replace(/🔁/g, '').trim();
+    const newSummary = isCurrentlyDaily
+      ? `[${section}] ${clean}`
+      : `[${section}] [Daily] ${clean}`;
+
+    await this._hass.callService('todo', 'update_item', {
+      entity_id: this._config.entity,
+      item: uid,
+      rename: newSummary
     });
     await this._fetchItems();
   }
@@ -129,7 +258,6 @@ class SectionedTodoCard extends HTMLElement {
     this._sections.add(cleanName);
     this._currentSection = cleanName;
     this._showAddSection = false;
-    // Add placeholder so it persists in Home Assistant
     await this._addItem(cleanName, '__empty__');
     this._render();
   }
@@ -150,10 +278,11 @@ class SectionedTodoCard extends HTMLElement {
 
     const itemsToUpdate = this._items.map(it => this._parseItem(it)).filter(it => it.section === oldName);
     for (const it of itemsToUpdate) {
+      const dailyTag = it.isDaily ? '[Daily] ' : '';
       await this._hass.callService('todo', 'update_item', {
         entity_id: this._config.entity,
         item: it.uid,
-        rename: `[${cleanNew}] ${it.text}`
+        rename: `[${cleanNew}] ${dailyTag}${it.text}`
       });
     }
 
@@ -236,8 +365,23 @@ class SectionedTodoCard extends HTMLElement {
       `;
     }
 
+    const renderTaskRow = (it) => `
+      <div class="task-row ${it.status === 'completed' ? 'completed' : ''}">
+        <label class="check-container">
+          <input type="checkbox" ${it.status === 'completed' ? 'checked' : ''} class="task-toggle" data-uid="${it.uid}" data-status="${it.status}" />
+          <span class="checkmark"></span>
+          <span class="task-text">${it.text}</span>
+          ${it.isDaily ? `<span class="daily-badge" title="Repeats daily - automatically resets to non-finished each morning">${ICON_REPEAT} Daily</span>` : ''}
+        </label>
+        <div class="task-actions">
+          <button class="icon-btn toggle-daily-task ${it.isDaily ? 'active-repeat' : ''}" data-uid="${it.uid}" data-section="${it.section}" data-raw="${encodeURIComponent(it.rawText)}" data-daily="${it.isDaily ? '1' : '0'}" title="${it.isDaily ? 'Remove daily repeat' : 'Make this task repeat daily'}">${ICON_REPEAT}</button>
+          <button class="del-task-btn" data-uid="${it.uid}" title="Delete task">✕</button>
+        </div>
+      </div>
+    `;
+
     if (isAll) {
-      // Accordion view for all sections (collapsed by default to prevent vertical overflow)
+      // Accordion view for all sections
       sectionsList.forEach(sec => {
         const secItems = parsedItems.filter(it => it.section === sec);
         const activeItems = secItems.filter(it => it.status !== 'completed');
@@ -262,34 +406,19 @@ class SectionedTodoCard extends HTMLElement {
               <div class="section-body">
                 <div class="add-bar">
                   <input type="text" class="add-task-input" data-section="${sec}" placeholder="Add task to ${sec}..." />
+                  <button class="daily-toggle-btn ${this._isDailyNewTask ? 'active' : ''}" title="Repeat daily (resets to non-finished each morning)">
+                    ${ICON_REPEAT} <span>Daily</span>
+                  </button>
                   <button class="add-task-btn" data-section="${sec}">＋</button>
                 </div>
 
                 <div class="task-list">
                   ${secItems.length === 0 ? `<div class="empty-hint">No items yet in ${sec}</div>` : ''}
-                  ${activeItems.map(it => `
-                    <div class="task-row">
-                      <label class="check-container">
-                        <input type="checkbox" class="task-toggle" data-uid="${it.uid}" data-status="${it.status}" />
-                        <span class="checkmark"></span>
-                        <span class="task-text">${it.text}</span>
-                      </label>
-                      <button class="del-task-btn" data-uid="${it.uid}">✕</button>
-                    </div>
-                  `).join('')}
+                  ${activeItems.map(renderTaskRow).join('')}
 
                   ${completedItems.length > 0 ? `
                     <div class="completed-divider">Completed (${completedItems.length})</div>
-                    ${completedItems.map(it => `
-                      <div class="task-row completed">
-                        <label class="check-container">
-                          <input type="checkbox" checked class="task-toggle" data-uid="${it.uid}" data-status="${it.status}" />
-                          <span class="checkmark"></span>
-                          <span class="task-text">${it.text}</span>
-                        </label>
-                        <button class="del-task-btn" data-uid="${it.uid}">✕</button>
-                      </div>
-                    `).join('')}
+                    ${completedItems.map(renderTaskRow).join('')}
                   ` : ''}
                 </div>
               </div>
@@ -298,7 +427,7 @@ class SectionedTodoCard extends HTMLElement {
         `;
       });
     } else {
-      // Single Section View (compact, focused)
+      // Single Section View
       const sec = this._currentSection;
       const secItems = parsedItems.filter(it => it.section === sec);
       const activeItems = secItems.filter(it => it.status !== 'completed');
@@ -319,34 +448,19 @@ class SectionedTodoCard extends HTMLElement {
 
           <div class="add-bar">
             <input type="text" class="add-task-input" data-section="${sec}" placeholder="Add task to ${sec}..." />
+            <button class="daily-toggle-btn ${this._isDailyNewTask ? 'active' : ''}" title="Repeat daily (resets to non-finished each morning)">
+              ${ICON_REPEAT} <span>Daily</span>
+            </button>
             <button class="add-task-btn" data-section="${sec}">${ICON_PLUS} <span>Add Task</span></button>
           </div>
 
           <div class="task-list">
             ${secItems.length === 0 ? `<div class="empty-hint">No items yet in ${sec}. Add one above!</div>` : ''}
-            ${activeItems.map(it => `
-              <div class="task-row">
-                <label class="check-container">
-                  <input type="checkbox" class="task-toggle" data-uid="${it.uid}" data-status="${it.status}" />
-                  <span class="checkmark"></span>
-                  <span class="task-text">${it.text}</span>
-                </label>
-                <button class="del-task-btn" data-uid="${it.uid}">✕</button>
-              </div>
-            `).join('')}
+            ${activeItems.map(renderTaskRow).join('')}
 
             ${completedItems.length > 0 ? `
               <div class="completed-divider">Completed (${completedItems.length})</div>
-              ${completedItems.map(it => `
-                <div class="task-row completed">
-                  <label class="check-container">
-                    <input type="checkbox" checked class="task-toggle" data-uid="${it.uid}" data-status="${it.status}" />
-                    <span class="checkmark"></span>
-                    <span class="task-text">${it.text}</span>
-                  </label>
-                  <button class="del-task-btn" data-uid="${it.uid}">✕</button>
-                </div>
-              `).join('')}
+              ${completedItems.map(renderTaskRow).join('')}
             ` : ''}
           </div>
         </div>
@@ -565,8 +679,9 @@ class SectionedTodoCard extends HTMLElement {
         }
         .add-bar {
           display: flex;
-          gap: 8px;
+          gap: 6px;
           margin-bottom: 10px;
+          align-items: center;
         }
         .add-task-input {
           flex: 1;
@@ -578,6 +693,32 @@ class SectionedTodoCard extends HTMLElement {
         }
         .add-task-input:focus {
           border-color: var(--primary-color, #03a9f4);
+        }
+        .daily-toggle-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          padding: 7px 11px;
+          border-radius: 6px;
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.18));
+          background: var(--secondary-background-color, rgba(0,0,0,0.03));
+          color: var(--secondary-text-color, #616161);
+          font-size: 0.82rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease-in-out;
+          user-select: none;
+          white-space: nowrap;
+        }
+        .daily-toggle-btn:hover {
+          background: var(--secondary-background-color, rgba(0,0,0,0.08));
+        }
+        .daily-toggle-btn.active {
+          background: var(--primary-color, #03a9f4);
+          color: #ffffff;
+          border-color: var(--primary-color, #03a9f4);
+          font-weight: 600;
         }
         .add-task-btn {
           display: inline-flex;
@@ -591,6 +732,7 @@ class SectionedTodoCard extends HTMLElement {
           font-weight: 500;
           font-size: 0.9rem;
           cursor: pointer;
+          white-space: nowrap;
         }
         .task-list {
           display: flex;
@@ -659,6 +801,41 @@ class SectionedTodoCard extends HTMLElement {
         }
         .task-row.completed .task-text {
           text-decoration: line-through;
+        }
+        .daily-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          background: rgba(3, 169, 244, 0.12);
+          color: var(--primary-color, #03a9f4);
+          font-size: 0.72rem;
+          font-weight: 600;
+          padding: 1px 7px;
+          border-radius: 10px;
+          margin-left: 6px;
+          vertical-align: middle;
+          border: 1px solid rgba(3, 169, 244, 0.25);
+          user-select: none;
+        }
+        .task-actions {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .toggle-daily-task {
+          font-size: 0.8rem;
+          opacity: 0.4;
+          padding: 3px 6px;
+          border-radius: 4px;
+          transition: all 0.15s;
+        }
+        .toggle-daily-task:hover {
+          opacity: 1;
+          background: var(--secondary-background-color, rgba(0,0,0,0.08));
+        }
+        .toggle-daily-task.active-repeat {
+          opacity: 1;
+          color: var(--primary-color, #03a9f4);
         }
         .del-task-btn {
           background: transparent;
@@ -839,13 +1016,32 @@ class SectionedTodoCard extends HTMLElement {
       });
     });
 
+    // Toggle Daily button for New Task
+    root.querySelectorAll('.daily-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const bar = btn.closest('.add-bar');
+        const input = bar ? bar.querySelector('.add-task-input') : null;
+        const currentVal = input ? input.value : '';
+        this._isDailyNewTask = !this._isDailyNewTask;
+        this._render();
+        if (currentVal) {
+          const sec = btn.getAttribute('data-section') || this._currentSection;
+          const newInput = root.querySelector(`.add-task-input[data-section="${sec}"]`) || root.querySelector('.add-task-input');
+          if (newInput) {
+            newInput.value = currentVal;
+            newInput.focus();
+          }
+        }
+      });
+    });
+
     // Add task buttons & Enter key
     root.querySelectorAll('.add-task-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const sec = btn.getAttribute('data-section');
         const input = root.querySelector(`.add-task-input[data-section="${sec}"]`);
         if (input && input.value) {
-          this._addItem(sec, input.value);
+          this._addItem(sec, input.value, this._isDailyNewTask);
           input.value = '';
         }
       });
@@ -855,9 +1051,20 @@ class SectionedTodoCard extends HTMLElement {
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && input.value) {
           const sec = input.getAttribute('data-section');
-          this._addItem(sec, input.value);
+          this._addItem(sec, input.value, this._isDailyNewTask);
           input.value = '';
         }
+      });
+    });
+
+    // Toggle Daily on existing task
+    root.querySelectorAll('.toggle-daily-task').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const uid = btn.getAttribute('data-uid');
+        const section = btn.getAttribute('data-section');
+        const rawText = decodeURIComponent(btn.getAttribute('data-raw') || '');
+        const isDaily = btn.getAttribute('data-daily') === '1';
+        this._toggleDaily(uid, rawText, isDaily, section);
       });
     });
 
@@ -936,5 +1143,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'sectioned-todo-card',
   name: 'Sectioned To-Do Card',
-  description: 'Manage To-Do tasks organized into dynamic, customizable sections.'
+  description: 'Manage To-Do tasks organized into dynamic, customizable sections with daily repeating reset.'
 });
