@@ -4,6 +4,12 @@
  * Allows full management of sections (Add, Rename, Delete) and tasks within each section.
  */
 
+const ICON_EDIT = `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align: middle;"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/></svg>`;
+
+const ICON_TRASH = `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="vertical-align: middle;"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg>`;
+
+const ICON_PLUS = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 3px;"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>`;
+
 class SectionedTodoCard extends HTMLElement {
   constructor() {
     super();
@@ -13,9 +19,10 @@ class SectionedTodoCard extends HTMLElement {
     this._items = [];
     this._sections = new Set(['Shopping', 'Asher', 'Michael', 'Tina']);
     this._currentSection = 'Shopping';
-    this._collapsedSections = new Set();
+    this._expandedSections = new Set();
     this._showAddSection = false;
     this._editingSection = null;
+    this._confirmDeleteSection = null;
   }
 
   setConfig(config) {
@@ -155,13 +162,11 @@ class SectionedTodoCard extends HTMLElement {
   }
 
   async _deleteSection(sectionName) {
-    if (!confirm(`Are you sure you want to delete section "${sectionName}" and all its tasks?`)) {
-      return;
-    }
     this._sections.delete(sectionName);
     if (this._currentSection === sectionName) {
-      this._currentSection = 'All';
+      this._currentSection = 'Shopping';
     }
+    this._confirmDeleteSection = null;
 
     const itemsToDelete = this._items
       .map(it => this._parseItem(it))
@@ -199,36 +204,61 @@ class SectionedTodoCard extends HTMLElement {
         <div class="inline-box">
           <input type="text" id="new-section-input" placeholder="New Section Name (e.g. Liam, Errands)..." autofocus />
           <div class="btn-group">
-            <button class="primary-btn" id="confirm-add-sec">Create</button>
             <button class="text-btn" id="cancel-add-sec">Cancel</button>
+            <button class="primary-btn" id="confirm-add-sec">Add Section</button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (this._editingSection) {
+      contentHtml += `
+        <div class="inline-box">
+          <div style="font-weight: 500; font-size: 0.85rem; color: var(--secondary-text-color, #757575);">Rename Section "${this._editingSection}"</div>
+          <input type="text" id="rename-section-input" value="${this._editingSection}" autofocus />
+          <div class="btn-group">
+            <button class="text-btn" id="cancel-rename-sec">Cancel</button>
+            <button class="primary-btn" id="confirm-rename-sec">Save Name</button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (this._confirmDeleteSection) {
+      contentHtml += `
+        <div class="inline-box" style="border: 1px solid rgba(244,67,54,0.3); background: rgba(244,67,54,0.06);">
+          <div style="font-weight: 600; font-size: 0.9rem; color: var(--error-color, #f44336);">Delete "${this._confirmDeleteSection}" and all its tasks?</div>
+          <div class="btn-group" style="margin-top: 6px;">
+            <button class="text-btn" id="cancel-del-sec">Cancel</button>
+            <button class="primary-btn danger-btn" id="confirm-del-sec" style="background: var(--error-color, #f44336); color: #fff;">Delete Section</button>
           </div>
         </div>
       `;
     }
 
     if (isAll) {
-      // Display all sections as clean collapsible groups
+      // Accordion view for all sections (collapsed by default to prevent vertical overflow)
       sectionsList.forEach(sec => {
         const secItems = parsedItems.filter(it => it.section === sec);
         const activeItems = secItems.filter(it => it.status !== 'completed');
         const completedItems = secItems.filter(it => it.status === 'completed');
-        const isCollapsed = this._collapsedSections.has(sec);
+        const isExpanded = this._expandedSections.has(sec);
 
         contentHtml += `
           <div class="section-group">
             <div class="section-header" data-section="${sec}">
               <div class="sec-title-wrap">
-                <span class="chevron">${isCollapsed ? '▶' : '▼'}</span>
+                <span class="chevron">${isExpanded ? '▼' : '▶'}</span>
                 <span class="sec-title">${sec}</span>
                 <span class="sec-badge">${activeItems.length}</span>
               </div>
               <div class="sec-actions">
-                <button class="icon-btn edit-sec" data-section="${sec}" title="Rename Section">✏️</button>
-                <button class="icon-btn del-sec" data-section="${sec}" title="Delete Section">🗑️</button>
+                <button class="icon-btn edit-sec" data-section="${sec}" title="Rename Section">${ICON_EDIT}</button>
+                <button class="icon-btn del-sec" data-section="${sec}" title="Delete Section">${ICON_TRASH}</button>
               </div>
             </div>
 
-            ${!isCollapsed ? `
+            ${isExpanded ? `
               <div class="section-body">
                 <div class="add-bar">
                   <input type="text" class="add-task-input" data-section="${sec}" placeholder="Add task to ${sec}..." />
@@ -268,7 +298,7 @@ class SectionedTodoCard extends HTMLElement {
         `;
       });
     } else {
-      // Single Section View
+      // Single Section View (compact, focused)
       const sec = this._currentSection;
       const secItems = parsedItems.filter(it => it.section === sec);
       const activeItems = secItems.filter(it => it.status !== 'completed');
@@ -282,14 +312,14 @@ class SectionedTodoCard extends HTMLElement {
               <span class="sec-badge">${activeItems.length}</span>
             </div>
             <div class="sec-actions">
-              <button class="pill-btn edit-sec" data-section="${sec}">✏️ Rename</button>
-              <button class="pill-btn del-sec danger" data-section="${sec}">🗑️ Remove</button>
+              <button class="pill-btn edit-sec" data-section="${sec}">${ICON_EDIT} <span>Rename</span></button>
+              <button class="pill-btn del-sec danger" data-section="${sec}">${ICON_TRASH} <span>Remove</span></button>
             </div>
           </div>
 
           <div class="add-bar">
             <input type="text" class="add-task-input" data-section="${sec}" placeholder="Add task to ${sec}..." />
-            <button class="add-task-btn" data-section="${sec}">＋ Add Task</button>
+            <button class="add-task-btn" data-section="${sec}">${ICON_PLUS} <span>Add Task</span></button>
           </div>
 
           <div class="task-list">
@@ -327,27 +357,24 @@ class SectionedTodoCard extends HTMLElement {
       <style>
         :host {
           display: block;
-          font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
         }
         ha-card {
-          background: var(--ha-card-background, var(--card-background-color, #ffffff));
-          border-radius: var(--ha-card-border-radius, 12px);
-          border: 1px solid var(--ha-card-border-color, rgba(0,0,0,0.08));
-          padding: 16px;
-          box-shadow: var(--ha-card-box-shadow, none);
-          box-sizing: border-box;
+          padding: 14px;
+          background: var(--card-background-color, #ffffff);
+          border-radius: 12px;
+          box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0,0,0,0.05));
         }
         .header-wrap {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
         }
         .card-title {
           font-size: 1.15rem;
           font-weight: 600;
-          color: var(--primary-text-color, #212121);
           margin: 0;
+          color: var(--primary-text-color, #212121);
         }
         .pills-bar {
           display: flex;
@@ -356,24 +383,22 @@ class SectionedTodoCard extends HTMLElement {
           margin-bottom: 12px;
         }
         .pill {
-          padding: 6px 12px;
-          border-radius: 16px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 11px;
+          border-radius: 20px;
           background: var(--secondary-background-color, rgba(0,0,0,0.05));
-          color: var(--primary-text-color, #212121);
+          color: var(--primary-text-color, #333333);
           font-size: 0.85rem;
           font-weight: 500;
           cursor: pointer;
-          white-space: nowrap;
-          border: 1px solid transparent;
-          transition: all 0.15s ease;
-          display: flex;
-          align-items: center;
-          gap: 6px;
           user-select: none;
+          transition: all 0.15s ease-in-out;
+          border: 1px solid transparent;
         }
         .pill:hover {
-          background: var(--primary-color, #03a9f4);
-          color: #ffffff;
+          background: var(--secondary-background-color, rgba(0,0,0,0.08));
         }
         .pill.active {
           background: var(--primary-color, #03a9f4);
@@ -396,9 +421,9 @@ class SectionedTodoCard extends HTMLElement {
         }
         .inline-box {
           background: var(--secondary-background-color, rgba(0,0,0,0.03));
-          padding: 12px;
+          padding: 10px 12px;
           border-radius: 8px;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
           display: flex;
           flex-direction: column;
           gap: 8px;
@@ -429,6 +454,11 @@ class SectionedTodoCard extends HTMLElement {
           border-radius: 6px;
           font-weight: 500;
         }
+        .danger-btn {
+          background: var(--error-color, #f44336) !important;
+          color: #fff !important;
+          border: none;
+        }
         .text-btn {
           background: transparent;
           border: none;
@@ -438,14 +468,14 @@ class SectionedTodoCard extends HTMLElement {
         .section-group {
           border: 1px solid var(--divider-color, rgba(0,0,0,0.08));
           border-radius: 8px;
-          margin-bottom: 10px;
+          margin-bottom: 8px;
           overflow: hidden;
         }
         .section-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 10px 12px;
+          padding: 8px 12px;
           background: var(--secondary-background-color, rgba(0,0,0,0.02));
           cursor: pointer;
           user-select: none;
@@ -461,7 +491,7 @@ class SectionedTodoCard extends HTMLElement {
         }
         .sec-title {
           font-weight: 600;
-          font-size: 0.95rem;
+          font-size: 0.92rem;
         }
         .sec-badge {
           background: var(--secondary-background-color, rgba(0,0,0,0.08));
@@ -472,53 +502,71 @@ class SectionedTodoCard extends HTMLElement {
         }
         .sec-actions {
           display: flex;
-          gap: 4px;
+          align-items: center;
+          gap: 6px;
         }
         .icon-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: transparent;
           border: none;
-          padding: 4px;
-          font-size: 0.85rem;
-          opacity: 0.6;
-          transition: opacity 0.15s;
+          padding: 5px;
+          border-radius: 4px;
+          color: var(--secondary-text-color, #757575);
+          opacity: 0.75;
+          transition: all 0.15s;
         }
         .icon-btn:hover {
           opacity: 1;
+          background: var(--secondary-background-color, rgba(0,0,0,0.06));
+          color: var(--primary-text-color, #212121);
         }
         .section-body {
-          padding: 10px 12px;
+          padding: 8px 12px;
         }
         .single-sec-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 12px;
-          padding-bottom: 8px;
+          margin-bottom: 10px;
+          padding-bottom: 6px;
           border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.06));
         }
         .sec-title-large {
-          font-size: 1.1rem;
+          font-size: 1.05rem;
           font-weight: 600;
           display: flex;
           align-items: center;
           gap: 8px;
         }
         .pill-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
           background: var(--secondary-background-color, rgba(0,0,0,0.05));
           border: 1px solid var(--divider-color, rgba(0,0,0,0.1));
           border-radius: 6px;
-          padding: 4px 10px;
+          padding: 5px 10px;
           font-size: 0.8rem;
-          font-weight: 500;
+          color: var(--primary-text-color, #333333);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .pill-btn:hover {
+          background: var(--secondary-background-color, rgba(0,0,0,0.1));
         }
         .pill-btn.danger {
-          color: #d32f2f;
-          border-color: rgba(211, 47, 47, 0.2);
+          color: var(--error-color, #f44336);
+          border-color: rgba(244,67,54,0.3);
+        }
+        .pill-btn.danger:hover {
+          background: rgba(244,67,54,0.08);
         }
         .add-bar {
           display: flex;
           gap: 8px;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
         }
         .add-task-input {
           flex: 1;
@@ -528,24 +576,39 @@ class SectionedTodoCard extends HTMLElement {
           font-size: 0.9rem;
           outline: none;
         }
+        .add-task-input:focus {
+          border-color: var(--primary-color, #03a9f4);
+        }
         .add-task-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--primary-color, #03a9f4);
-          color: #fff;
+          color: #ffffff;
           border: none;
-          padding: 8px 14px;
           border-radius: 6px;
-          font-weight: 600;
+          padding: 8px 14px;
+          font-weight: 500;
+          font-size: 0.9rem;
+          cursor: pointer;
         }
         .task-list {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 5px;
+        }
+        .empty-hint {
+          color: var(--secondary-text-color, #9e9e9e);
+          font-size: 0.85rem;
+          font-style: italic;
+          padding: 6px 0;
+          text-align: center;
         }
         .task-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 6px 8px;
+          padding: 7px 10px;
           border-radius: 6px;
           background: var(--secondary-background-color, rgba(0,0,0,0.02));
           transition: background 0.15s;
@@ -591,7 +654,7 @@ class SectionedTodoCard extends HTMLElement {
           transform: rotate(45deg);
         }
         .task-text {
-          font-size: 0.95rem;
+          font-size: 0.92rem;
           color: var(--primary-text-color, #212121);
         }
         .task-row.completed .task-text {
@@ -602,28 +665,23 @@ class SectionedTodoCard extends HTMLElement {
           border: none;
           color: var(--secondary-text-color, #9e9e9e);
           font-size: 0.9rem;
+          cursor: pointer;
           padding: 4px 8px;
           border-radius: 4px;
+          transition: color 0.15s;
         }
         .del-task-btn:hover {
-          color: #d32f2f;
-          background: rgba(211, 47, 47, 0.08);
+          color: var(--error-color, #f44336);
+          background: rgba(244,67,54,0.08);
         }
         .completed-divider {
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: var(--secondary-text-color, #757575);
-          text-transform: uppercase;
-          margin-top: 8px;
-          margin-bottom: 2px;
-          letter-spacing: 0.5px;
-        }
-        .empty-hint {
-          padding: 10px;
-          text-align: center;
+          font-size: 0.78rem;
           color: var(--secondary-text-color, #9e9e9e);
-          font-size: 0.85rem;
-          font-style: italic;
+          margin-top: 8px;
+          margin-bottom: 4px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-weight: 500;
         }
       </style>
 
@@ -669,6 +727,8 @@ class SectionedTodoCard extends HTMLElement {
     if (openAddBtn) {
       openAddBtn.addEventListener('click', () => {
         this._showAddSection = true;
+        this._editingSection = null;
+        this._confirmDeleteSection = null;
         this._render();
         const input = root.querySelector('#new-section-input');
         if (input) input.focus();
@@ -697,36 +757,85 @@ class SectionedTodoCard extends HTMLElement {
       });
     }
 
-    // Toggle Accordion Group
-    root.querySelectorAll('.section-header').forEach(el => {
-      el.addEventListener('click', (e) => {
-        if (e.target.closest('.sec-actions')) return;
-        const sec = el.getAttribute('data-section');
-        if (this._collapsedSections.has(sec)) {
-          this._collapsedSections.delete(sec);
-        } else {
-          this._collapsedSections.add(sec);
+    // Rename Section buttons
+    root.querySelectorAll('.edit-sec').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._editingSection = btn.getAttribute('data-section');
+        this._confirmDeleteSection = null;
+        this._showAddSection = false;
+        this._render();
+        const input = root.querySelector('#rename-section-input');
+        if (input) {
+          input.focus();
+          input.select();
         }
+      });
+    });
+
+    const cancelRenameBtn = root.querySelector('#cancel-rename-sec');
+    if (cancelRenameBtn) {
+      cancelRenameBtn.addEventListener('click', () => {
+        this._editingSection = null;
+        this._render();
+      });
+    }
+
+    const confirmRenameBtn = root.querySelector('#confirm-rename-sec');
+    const renameSecInput = root.querySelector('#rename-section-input');
+    if (confirmRenameBtn && renameSecInput) {
+      const doRename = () => {
+        this._renameSection(this._editingSection, renameSecInput.value);
+      };
+      confirmRenameBtn.addEventListener('click', doRename);
+      renameSecInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doRename();
+        if (e.key === 'Escape') {
+          this._editingSection = null;
+          this._render();
+        }
+      });
+    }
+
+    // Delete Section buttons
+    root.querySelectorAll('.del-sec').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._confirmDeleteSection = btn.getAttribute('data-section');
+        this._editingSection = null;
+        this._showAddSection = false;
         this._render();
       });
     });
 
-    // Rename Section
-    root.querySelectorAll('.edit-sec').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sec = btn.getAttribute('data-section');
-        const newName = prompt(`Rename section "${sec}" to:`, sec);
-        if (newName) this._renameSection(sec, newName);
+    const cancelDelBtn = root.querySelector('#cancel-del-sec');
+    if (cancelDelBtn) {
+      cancelDelBtn.addEventListener('click', () => {
+        this._confirmDeleteSection = null;
+        this._render();
       });
-    });
+    }
 
-    // Delete Section
-    root.querySelectorAll('.del-sec').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sec = btn.getAttribute('data-section');
-        this._deleteSection(sec);
+    const confirmDelBtn = root.querySelector('#confirm-del-sec');
+    if (confirmDelBtn) {
+      confirmDelBtn.addEventListener('click', () => {
+        if (this._confirmDeleteSection) {
+          this._deleteSection(this._confirmDeleteSection);
+        }
+      });
+    }
+
+    // Toggle Accordion Group in All view
+    root.querySelectorAll('.section-header').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.sec-actions')) return;
+        const sec = el.getAttribute('data-section');
+        if (this._expandedSections.has(sec)) {
+          this._expandedSections.delete(sec);
+        } else {
+          this._expandedSections.add(sec);
+        }
+        this._render();
       });
     });
 
@@ -770,6 +879,57 @@ class SectionedTodoCard extends HTMLElement {
     });
   }
 }
+
+// Global hook to ensure the top-bar hamburger / sandwich menu is permanently hidden
+function hideHomeAssistantMenu() {
+  try {
+    const ha = document.querySelector('home-assistant');
+    if (!ha) return;
+
+    function walk(node) {
+      if (!node) return;
+      if (node.tagName && (node.tagName.toLowerCase() === 'ha-menu-button' || node.getAttribute('slot') === 'navigationIcon')) {
+        node.style.setProperty('display', 'none', 'important');
+        node.style.setProperty('visibility', 'hidden', 'important');
+        node.style.setProperty('width', '0', 'important');
+        try { node.remove(); } catch(e) {}
+      }
+      if (node.querySelectorAll) {
+        node.querySelectorAll('ha-menu-button, [slot="navigationIcon"]').forEach(b => {
+          b.style.setProperty('display', 'none', 'important');
+          b.style.setProperty('visibility', 'hidden', 'important');
+          b.style.setProperty('width', '0', 'important');
+          try { b.remove(); } catch(e) {}
+        });
+      }
+      if (node.children) {
+        for (const child of node.children) walk(child);
+      }
+      if (node.shadowRoot) {
+        if (!node.shadowRoot.querySelector('#hide-ha-menu-style')) {
+          const s = document.createElement('style');
+          s.id = 'hide-ha-menu-style';
+          s.textContent = `
+            ha-menu-button, [slot="navigationIcon"] {
+              display: none !important;
+              visibility: hidden !important;
+              width: 0 !important;
+              max-width: 0 !important;
+              opacity: 0 !important;
+              pointer-events: none !important;
+            }
+          `;
+          try { node.shadowRoot.appendChild(s); } catch(e) {}
+        }
+        walk(node.shadowRoot);
+      }
+    }
+    walk(ha);
+  } catch(e) {}
+}
+
+setInterval(hideHomeAssistantMenu, 600);
+setTimeout(hideHomeAssistantMenu, 100);
 
 customElements.define('sectioned-todo-card', SectionedTodoCard);
 window.customCards = window.customCards || [];
