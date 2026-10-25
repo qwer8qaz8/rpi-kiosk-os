@@ -303,6 +303,9 @@ print('=' * 80)
   screen)
     action="${2:-status}"
     case "$action" in
+      sleep)
+        /opt/kiosk/screen-control.sh sleep
+        ;;
       on|off)
         /opt/kiosk/kioskos set screen "$action"
         ;;

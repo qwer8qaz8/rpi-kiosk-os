@@ -20,6 +20,7 @@ import json
 
 PORT = 8124
 CHIME_SCRIPT = "/opt/kiosk/play-chime.sh"
+SCREEN_SCRIPT = "/opt/kiosk/screen-control.sh"
 
 class ChimeHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -43,6 +44,44 @@ class ChimeHandler(BaseHTTPRequestHandler):
                 "appliance": "Home Assistant Kiosk",
                 "audio_endpoint": "/chime?sound=bing"
             }).encode("utf-8"))
+            return
+
+        # Screen Sleep endpoint (turns screen off & monitors mouse to wake)
+        if path == "/screen/sleep":
+            if os.path.exists(SCREEN_SCRIPT):
+                subprocess.Popen(["/bin/bash", SCREEN_SCRIPT, "sleep"])
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "action": "sleep"}).encode("utf-8"))
+            return
+
+        # Screen Wake endpoint
+        if path == "/screen/wake":
+            if os.path.exists(SCREEN_SCRIPT):
+                subprocess.Popen(["/bin/bash", SCREEN_SCRIPT, "on"])
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "action": "wake"}).encode("utf-8"))
+            return
+
+        # Brightness adjustment endpoint
+        if path == "/brightness":
+            val = params.get("value", ["80"])[0]
+            try:
+                val = str(int(val))
+            except ValueError:
+                val = "80"
+            if os.path.exists(SCREEN_SCRIPT):
+                subprocess.Popen(["/bin/bash", SCREEN_SCRIPT, "brightness", val])
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": True, "brightness": val}).encode("utf-8"))
             return
 
         if path == "/chime" or path == "/notify" or path == "/bing":

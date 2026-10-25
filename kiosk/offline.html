@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Home Assistant Unavailable – Kiosk</title>
+  <title>Can't Reach Page – Home Assistant Kiosk</title>
   <style>
     * {
       box-sizing: border-box;
@@ -25,32 +25,48 @@
     }
     .card {
       background: rgba(15, 23, 42, 0.85);
-      border: 1px solid #1e293b;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 40px rgba(239, 68, 68, 0.08);
       border-radius: 24px;
-      padding: 44px 48px;
+      padding: 48px 44px;
       max-width: 540px;
       width: 90vw;
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
+      position: relative;
+    }
+    .pulse-glow {
+      position: absolute;
+      top: 50px;
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(239, 68, 68, 0.35) 0%, rgba(239, 68, 68, 0) 70%);
+      animation: pulse 2.5s infinite ease-in-out;
+      pointer-events: none;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.6; }
+      50% { transform: scale(1.4); opacity: 1; }
     }
     .icon-container {
-      width: 80px;
-      height: 80px;
-      border-radius: 20px;
+      width: 84px;
+      height: 84px;
+      border-radius: 22px;
       background: rgba(239, 68, 68, 0.12);
-      border: 1.5px solid rgba(239, 68, 68, 0.4);
+      border: 1.5px solid rgba(239, 68, 68, 0.45);
       display: flex;
       align-items: center;
       justify-content: center;
       margin-bottom: 24px;
       position: relative;
+      z-index: 2;
     }
     .icon-svg {
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       stroke: #f87171;
       fill: none;
       stroke-width: 2.2;
@@ -58,23 +74,25 @@
       stroke-linejoin: round;
     }
     h1 {
-      font-size: 24px;
-      font-weight: 700;
+      font-size: 26px;
+      font-weight: 800;
       letter-spacing: -0.02em;
       color: #ffffff;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
+      z-index: 2;
     }
     p {
       color: #94a3b8;
-      font-size: 14px;
+      font-size: 15px;
       line-height: 1.6;
       margin-bottom: 24px;
+      z-index: 2;
     }
     .meta-box {
       width: 100%;
       background: #090d16;
       border: 1px solid #1e293b;
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 14px 18px;
       margin-bottom: 24px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -83,11 +101,13 @@
       color: #cbd5e1;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
+      z-index: 2;
     }
     .meta-row {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -99,11 +119,32 @@
     .meta-value {
       color: #38bdf8;
       font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #f87171;
+      font-weight: 600;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+      animation: blink 1.2s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
     }
     .btn-retry {
-      background: #0284c7;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
       color: #ffffff;
-      border: none;
+      border: 1px solid rgba(56, 189, 248, 0.4);
       border-radius: 12px;
       padding: 12px 28px;
       font-size: 14px;
@@ -112,89 +153,146 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      transition: background 0.2s;
+      transition: all 0.2s;
+      z-index: 2;
     }
     .btn-retry:hover {
-      background: #0369a1;
+      background: linear-gradient(135deg, #0369a1, #075985);
+      transform: translateY(-1px);
+    }
+    .btn-retry:active {
+      transform: translateY(1px);
     }
     .countdown-text {
-      font-size: 12px;
+      font-size: 13px;
       color: #64748b;
       margin-top: 14px;
+      z-index: 2;
     }
     .brand-footer {
       position: absolute;
       bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
       font-size: 12px;
-      color: #475569;
+      color: #64748b;
       font-weight: 600;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
+    }
+    .brand-logo-svg {
+      width: 22px;
+      height: 22px;
+      display: inline-block;
+      vertical-align: middle;
     }
   </style>
 </head>
 <body>
   <div class="card">
+    <div class="pulse-glow"></div>
     <div class="icon-container">
+      <!-- Failed Sign / Connection Severed Icon -->
       <svg class="icon-svg" viewBox="0 0 24 24">
-        <line x1="1" y1="1" x2="23" y2="23"></line>
-        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
-        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
-        <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
-        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
-        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-        <line x1="12" y1="20" x2="12.01" y2="20"></line>
+        <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
       </svg>
     </div>
-    <h1>Home Assistant Offline</h1>
-    <p>Cannot reach Home Assistant. Reconnection will happen automatically once connection is restored.</p>
+
+    <h1>Can't Reach Page</h1>
+    <p>Cannot connect to Home Assistant. Checking network connection and waiting for service in background...</p>
+
+    <div class="meta-box">
+      <div class="meta-row">
+        <span class="meta-label">TARGET:</span>
+        <span class="meta-value" id="target-display">Loading...</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">STATUS:</span>
+        <span class="status-badge"><span class="status-dot"></span> Reconnecting</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">PROBE:</span>
+        <span class="meta-value" id="probe-status">Checking in background...</span>
+      </div>
+    </div>
 
     <button class="btn-retry" onclick="reconnectNow()">
-      🔄 Reconnect Now
+      🔄 Try Again Now
     </button>
     <div class="countdown-text">
-      Auto-retry in <span id="countdown">5</span> seconds...
+      Next check in <span id="countdown">3</span>s...
     </div>
   </div>
 
   <div class="brand-footer">
-    HOME ASSISTANT KIOSK  •  8AIR  •  SUPERG TECHNOLOGIES
+    <svg class="brand-logo-svg" viewBox="0 0 32 32" fill="none">
+      <path d="M16 4C9.37 4 4 9.37 4 16C4 22.63 9.37 28 16 28C22.63 28 28 22.63 28 16" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M12 12C12 9.79 13.79 8 16 8C18.21 8 20 9.79 20 12C20 14.5 17 16 16 16C15 16 12 17.5 12 20C12 22.21 13.79 24 16 24C18.21 24 20 22.21 20 20" stroke="#f87171" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+    <span>8AIR</span>
+    <span>•</span>
+    <span>SUPERG TECHNOLOGIES</span>
   </div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const targetUrl = params.get('url') || 'http://homeassistant.local:8123/lovelace/0?kiosk';
+    const targetUrl = params.get('url') || 'http://umbrel.local:8123/dashboard-kiosk/0';
 
-    let timeLeft = 5;
+    const targetEl = document.getElementById('target-display');
+    const probeEl = document.getElementById('probe-status');
     const countEl = document.getElementById('countdown');
+
+    if (targetEl) targetEl.textContent = targetUrl;
+
+    let timeLeft = 3;
+    let isChecking = false;
 
     function reconnectNow() {
       window.location.replace(targetUrl);
     }
 
-    // Auto-ping target every second
+    function checkConnection() {
+      if (isChecking) return;
+      isChecking = true;
+      if (probeEl) probeEl.textContent = 'Probing target...';
+
+      fetch(targetUrl, { mode: 'no-cors', cache: 'no-store' })
+        .then(() => {
+          if (probeEl) {
+            probeEl.textContent = 'Online! Redirecting...';
+            probeEl.style.color = '#4ade80';
+          }
+          setTimeout(() => {
+            window.location.replace(targetUrl);
+          }, 300);
+        })
+        .catch(() => {
+          if (probeEl) probeEl.textContent = 'Host offline (Retrying)';
+          isChecking = false;
+        });
+    }
+
+    // Auto-ping target every 3 seconds
     setInterval(() => {
       timeLeft--;
       if (timeLeft <= 0) {
-        timeLeft = 5;
-        // Probe connectivity
-        fetch(targetUrl, { mode: 'no-cors', cache: 'no-store' })
-          .then(() => {
-            window.location.replace(targetUrl);
-          })
-          .catch(() => {
-            // Still offline
-          });
+        timeLeft = 3;
+        checkConnection();
       }
       if (countEl) countEl.textContent = timeLeft;
     }, 1000);
 
-    // Prevent navigation / keyboard bypasses
+    // Initial check right away
+    setTimeout(checkConnection, 1000);
+
+    // Keyboard shortcuts: allow F5 or Ctrl+R; block others
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r')) {
         reconnectNow();
         return;
       }
-      // Block all other shortcut combos (Ctrl+T, Ctrl+N, Ctrl+W, Shift+Esc, etc.)
       if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();

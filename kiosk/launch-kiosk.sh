@@ -232,15 +232,43 @@ if (window.location.href.startsWith('chrome-error://')) {
   window.location.replace('file:///opt/kiosk/offline.html?url=' + encodeURIComponent('__DASHBOARD_URL__'));
 }
 
-// 4. Home Assistant Auto-Login
+// Deep Shadow DOM Finder Helper
+function findInShadow(root, selector) {
+  if (!root) return null;
+  try {
+    const el = root.querySelector ? root.querySelector(selector) : null;
+    if (el) return el;
+    const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
+    for (const child of all) {
+      if (child.shadowRoot) {
+        const found = findInShadow(child.shadowRoot, selector);
+        if (found) return found;
+      }
+    }
+  } catch(e) {}
+  return null;
+}
+
+// 4. Home Assistant Auto-Login (Shadow DOM Capable)
 const HA_USER = '__AUTOLOGIN_USER__';
 const HA_PASS = '__AUTOLOGIN_PASS__';
 
 function attemptHaLogin() {
   if (!HA_USER || !HA_PASS) return;
-  const userField = document.querySelector('input[name="username"]') || document.querySelector('input[autocomplete="username"]');
-  const passField = document.querySelector('input[name="password"]') || document.querySelector('input[type="password"]');
-  
+
+  // 1) Check for User selection button (Trusted Networks auth flow)
+  const userItems = document.querySelectorAll ? document.querySelectorAll('mwc-list-item, [role="button"]') : [];
+  for (const item of userItems) {
+    if (item.textContent && item.textContent.trim().toLowerCase() === HA_USER.toLowerCase()) {
+      item.click();
+      return;
+    }
+  }
+
+  // 2) Check for Username and Password fields inside Shadow DOM
+  const userField = findInShadow(document, 'input[name="username"]') || findInShadow(document, 'input[autocomplete="username"]');
+  const passField = findInShadow(document, 'input[name="password"]') || findInShadow(document, 'input[type="password"]');
+
   if (userField && passField && !userField.value) {
     userField.value = HA_USER;
     userField.dispatchEvent(new Event('input', { bubbles: true }));
@@ -250,22 +278,85 @@ function attemptHaLogin() {
     passField.dispatchEvent(new Event('input', { bubbles: true }));
     passField.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Stay logged in checkbox
-    const stayCheck = document.querySelector('input[type="checkbox"]');
+    const stayCheck = findInShadow(document, 'input[type="checkbox"]');
     if (stayCheck && !stayCheck.checked) stayCheck.click();
 
     setTimeout(() => {
-      const submitBtn = document.querySelector('button[type="submit"]') || document.querySelector('mwc-button') || document.querySelector('ha-progress-button');
+      const submitBtn = findInShadow(document, 'button[type="submit"]') ||
+                        findInShadow(document, 'mwc-button') ||
+                        findInShadow(document, 'ha-progress-button');
       if (submitBtn) submitBtn.click();
     }, 250);
   }
 }
 
+// 5. Hide Sandwich & Sidebar Menu Permanently across all Shadow DOM levels
+function hideSandwich() {
+  const styles = `
+    ha-menu-button,
+    [slot="navigationIcon"],
+    mwc-icon-button[slot="navigationIcon"],
+    paper-icon-button[slot="navigationIcon"],
+    ha-icon-button[slot="navigationIcon"],
+    ha-sidebar,
+    .mdc-drawer,
+    ha-drawer > [slot="drawer"] {
+      display: none !important;
+      visibility: hidden !important;
+      width: 0 !important;
+      height: 0 !important;
+      max-width: 0 !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+  `;
+
+  function injectCSS(root) {
+    if (!root) return;
+    try {
+      if (root.getElementById && !root.getElementById('ha-kiosk-hide-sandwich')) {
+        const s = document.createElement('style');
+        s.id = 'ha-kiosk-hide-sandwich';
+        s.textContent = styles;
+        root.appendChild(s);
+      }
+      const menuButtons = root.querySelectorAll ? root.querySelectorAll('ha-menu-button, [slot="navigationIcon"], ha-sidebar') : [];
+      menuButtons.forEach(btn => {
+        btn.style.setProperty('display', 'none', 'important');
+        btn.style.setProperty('visibility', 'hidden', 'important');
+      });
+    } catch(e) {}
+  }
+
+  function recurseShadows(root) {
+    if (!root) return;
+    injectCSS(root);
+    try {
+      const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
+      for (const el of all) {
+        if (el.shadowRoot) recurseShadows(el.shadowRoot);
+      }
+    } catch(e) {}
+  }
+
+  recurseShadows(document);
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => setTimeout(attemptHaLogin, 500));
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(attemptHaLogin, 500);
+    hideSandwich();
+  });
 } else {
   setTimeout(attemptHaLogin, 500);
+  hideSandwich();
 }
+window.addEventListener('load', () => {
+  hideSandwich();
+  setTimeout(attemptHaLogin, 1000);
+});
+setInterval(hideSandwich, 1500);
+setInterval(attemptHaLogin, 3000);
 EOF_JS
 
 if [ -n "$AUTOLOGIN_USER" ]; then
@@ -295,12 +386,20 @@ sleep 0.5
 
 # Persistent supervisor loop: keeps single-purpose fullscreen Chromium alive permanently
 while true; do
-    echo "[ha-kiosk] Launching Fullscreen Single-Purpose Chromium..."
+    # Check if target HA is reachable, otherwise use branded offline screen with auto-retry
+    TARGET_LAUNCH_URL="$DASHBOARD_URL"
+    if ! curl -s -m 2 -o /dev/null -w "%{http_code}" "$DASHBOARD_URL" 2>/dev/null | grep -q '^[23]'; then
+        TARGET_LAUNCH_URL="file:///opt/kiosk/offline.html?url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$DASHBOARD_URL'''))" 2>/dev/null || echo "$DASHBOARD_URL")"
+    fi
+
+    echo "[ha-kiosk] Launching Fullscreen Single-Purpose Chromium ($TARGET_LAUNCH_URL)..."
     "$CHROMIUM_BIN" \
       --ozone-platform=wayland \
+      --remote-debugging-port=9222 \
+      --remote-allow-origins=* \
       --load-extension="$EXT_DIR" \
       --kiosk \
-      --app="$DASHBOARD_URL" \
+      --app="$TARGET_LAUNCH_URL" \
       --start-fullscreen \
       --noerrdialogs \
       --disable-infobars \
@@ -316,14 +415,28 @@ while true; do
       --disable-session-crashed-bubble \
       --disable-context-menu \
       --disable-component-update \
-      --disable-background-networking \
       --disable-domain-reliability \
-      --disable-sync \
       --no-default-browser-check \
       --autoplay-policy=no-user-gesture-required \
       --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' &
     
     CHROME_PID=$!
+
+    # Background Watchdog to redirect any Chrome error page to branded offline.html
+    (
+      while kill -0 "$CHROME_PID" 2>/dev/null; do
+        sleep 3
+        if command -v curl >/dev/null 2>&1; then
+          tab_info=$(curl -s http://127.0.0.1:9222/json 2>/dev/null || true)
+          if echo "$tab_info" | grep -q "chrome-error://"; then
+            echo "[ha-kiosk] Chrome error detected, navigating to offline screen..."
+            encoded_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$DASHBOARD_URL'''))" 2>/dev/null || echo "$DASHBOARD_URL")
+            curl -s "http://127.0.0.1:9222/json/new?file:///opt/kiosk/offline.html?url=$encoded_url" >/dev/null 2>&1 || true
+          fi
+        fi
+      done
+    ) &
+
     wait "$CHROME_PID" 2>/dev/null || true
     sleep 1
 done

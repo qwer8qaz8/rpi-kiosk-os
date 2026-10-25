@@ -29,10 +29,14 @@ esac
 
 if [ "$CHIME_ENABLED" = "True" ] || [ "$CHIME_ENABLED" = "true" ] || [ "$CHIME_ENABLED" = "1" ]; then
     AUDIO_PATH="/opt/kiosk/sounds/$SOUND_FILE"
-    [ ! -f "$AUDIO_PATH" ] && AUDIO_PATH="/opt/kiosk/sounds/startup.wav"
+    [ ! -f "$AUDIO_PATH" ] && AUDIO_PATH="/opt/kiosk/sounds/chime-boot.wav"
     if [ -f "$AUDIO_PATH" ]; then
+        # Ensure comfortable volume levels (40%)
+        amixer -q set Master 40% 2>/dev/null || true
+        amixer -q set PCM 40% 2>/dev/null || true
+
         if command -v pw-play >/dev/null 2>&1; then
-            pw-play "$AUDIO_PATH" >/dev/null 2>&1 &
+            pw-play --volume 0.35 "$AUDIO_PATH" >/dev/null 2>&1 &
         elif command -v aplay >/dev/null 2>&1; then
             aplay -q "$AUDIO_PATH" >/dev/null 2>&1 &
         fi

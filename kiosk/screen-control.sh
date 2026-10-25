@@ -126,7 +126,18 @@ set_brightness() {
 
   # 3. Hardware DDC/CI for HDMI monitors (if available)
   if command -v ddcutil >/dev/null 2>&1; then
-    nohup ddcutil setvcp 10 "$percent" >/dev/null 2>&1 &
+    local ddc_bus=""
+    for b in 20 21 0 1 2; do
+      if [ -e "/dev/i2c-$b" ]; then
+        ddc_bus="$b"
+        break
+      fi
+    done
+    if [ -n "$ddc_bus" ]; then
+      ddcutil --bus "$ddc_bus" setvcp 10 "$percent" >/dev/null 2>&1 || true
+    else
+      ddcutil setvcp 10 "$percent" >/dev/null 2>&1 || true
+    fi
   fi
 
   # Save to config
@@ -167,6 +178,14 @@ set_screen_power() {
   local state="$1" # "on" or "off"
 
   if [ "$state" = "on" ]; then
+    # Wayland DPMS Power ON
+    pkill -f "kiosk-mouse-wake" 2>/dev/null || true
+    if command -v wlopm >/dev/null 2>&1; then
+      for out in $(get_all_outputs); do
+        run_wayland_cmd wlopm --on "$out" 2>/dev/null || true
+      done
+    fi
+
     # 1. Raspberry Pi HDMI display power ON via VideoCore
     if command -v vcgencmd >/dev/null 2>&1; then
       vcgencmd display_power 1 2>/dev/null || true
@@ -212,8 +231,14 @@ except Exception:
     echo "Screen powered ON"
 
   elif [ "$state" = "off" ]; then
+    # Wayland DPMS Power OFF
+    if command -v wlopm >/dev/null 2>&1; then
+      for out in $(get_all_outputs); do
+        run_wayland_cmd wlopm --off "$out" 2>/dev/null || true
+      done
+    fi
+
     # 1. Raspberry Pi HDMI display power OFF via VideoCore
-    # Note: We do NOT use wlr-randr --off because disabling all outputs causes Cage compositor to exit!
     if command -v vcgencmd >/dev/null 2>&1; then
       vcgencmd display_power 0 2>/dev/null || true
     fi
@@ -335,7 +360,49 @@ get_status() {
   echo "$screen_state"
 }
 
+set_screen_sleep() {
+  echo "[screen] Putting display to sleep via Wayland DPMS..."
+  # 1. Turn off monitor via Wayland DPMS
+  if command -v wlopm >/dev/null 2>&1; then
+    for out in $(get_all_outputs); do
+      run_wayland_cmd wlopm --off "$out" 2>/dev/null || true
+    done
+  fi
+
+  # 2. Update config screen_on = false
+  if [ -f "$CONFIG_FILE" ]; then
+    python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE', 'r') as f:
+        data = json.load(f)
+    data['screen_on'] = False
+    with open('$CONFIG_FILE', 'w') as f:
+        json.dump(data, f, indent=2)
+except Exception:
+    pass
+" 2>/dev/null || true
+  fi
+
+  # 3. Kill any older wake watcher
+  pkill -f "kiosk-mouse-wake" 2>/dev/null || true
+
+  # 4. Asynchronously wait for mouse movement or click to wake
+  (
+    exec -a "kiosk-mouse-wake" bash -c '
+      if [ -e /dev/input/mice ]; then
+        read -r -n 1 < /dev/input/mice 2>/dev/null || true
+        /opt/kiosk/screen-control.sh on >/dev/null 2>&1
+      fi
+    '
+  ) &
+  echo "Screen sleeping. Move mouse or touch to wake."
+}
+
 case "$ACTION" in
+  sleep)
+    set_screen_sleep
+    ;;
   on)
     set_screen_power "on"
     ;;
