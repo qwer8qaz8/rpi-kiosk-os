@@ -250,6 +250,14 @@ update_from_github() {
     ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk-config 2>/dev/null || true
     ln -sf /opt/kiosk/kiosk-config.sh /usr/bin/kiosk 2>/dev/null || true
 
+    # Deploy Bootsplash theme and update initramfs if splash changed
+    if [ -f /opt/kiosk/splash.png ] && [ -d /usr/share/plymouth/themes/kioskos ]; then
+      cp -f /opt/kiosk/splash.png /usr/share/plymouth/themes/kioskos/ 2>/dev/null || true
+      if [ -x /usr/sbin/plymouth-set-default-theme ]; then
+        /usr/sbin/plymouth-set-default-theme -R kioskos >> "$log_file" 2>&1 || true
+      fi
+    fi
+
     # Re-apply hardware performance profile
     if [ -x /opt/kiosk/hardware-profiles.py ]; then
       /opt/kiosk/hardware-profiles.py apply >> "$log_file" 2>&1 || true

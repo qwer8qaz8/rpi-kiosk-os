@@ -90,11 +90,6 @@ if [ -x "$SCRIPT_DIR/play-chime.sh" ] && [ ! -f "/tmp/kiosk-chime-played" ]; the
     "$SCRIPT_DIR/play-chime.sh" boot &
 fi
 
-# Dismiss early boot splash cleanly
-if command -v plymouth >/dev/null 2>&1; then
-    plymouth --quit 2>/dev/null || true
-fi
-
 # If using a .local hostname (e.g. homeassistant.local), ensure mDNS resolves
 if [[ "$DASHBOARD_URL" =~ ([a-zA-Z0-9.-]+\.local) ]]; then
   mdns_host="${BASH_REMATCH[1]}"
@@ -427,10 +422,13 @@ fi
 
 sed -i "s|__DASHBOARD_URL__|$DASHBOARD_URL|g" "$EXT_DIR/content.js"
 
-# Launch Hardware-Aware Native GTK3 Splash Screen on Wayland (only on initial boot)
-if [ -f "$SCRIPT_DIR/kiosk-native-splash.py" ] && [ ! -f "/tmp/kiosk-boot-splash-done" ]; then
-    touch "/tmp/kiosk-boot-splash-done"
+# Launch Hardware-Aware Native GTK3 Splash Screen on Wayland
+if [ -f "$SCRIPT_DIR/kiosk-native-splash.py" ]; then
     echo "[ha-kiosk] Displaying Hardware-Aware Native Splash Screen..."
+    # Dismiss Plymouth bootsplash as Wayland splash takes over
+    if command -v plymouth >/dev/null 2>&1; then
+        plymouth --quit 2>/dev/null || true
+    fi
     python3 "$SCRIPT_DIR/kiosk-native-splash.py" "$DASHBOARD_URL" || true
 fi
 
