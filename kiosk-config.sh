@@ -231,6 +231,12 @@ update_from_github() {
       rm -f /tmp/kiosk-config-backup.json 2>/dev/null || true
     fi
 
+    # Clean up any obsolete WebUI remnants
+    systemctl stop kiosk-webui 2>/dev/null || true
+    systemctl disable kiosk-webui 2>/dev/null || true
+    rm -f /etc/systemd/system/kiosk-webui.service 2>/dev/null || true
+    rm -rf /opt/kiosk/webui 2>/dev/null || true
+
     # Record updated commit
     echo "$new_commit" > /opt/kiosk/.git_commit 2>/dev/null || true
 
