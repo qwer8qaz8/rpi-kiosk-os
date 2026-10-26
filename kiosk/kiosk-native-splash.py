@@ -126,8 +126,8 @@ class NativeSplashWindow(Gtk.Window):
 
         # Footer Credit
         self.credit_label = Gtk.Label()
-        self.credit_label.set_markup('<span font="10" color="#475569">Single-Purpose Smart Home Hub  •  Hardware Optimized  •  8Air</span>')
-        self.main_box.pack_start(self.credit_label, False, False, 2)
+        self.credit_label.set_markup('<span font="12" weight="bold" color="#64748b">8Air  •  SuperG Technologies</span>')
+        self.main_box.pack_start(self.credit_label, False, False, 6)
 
         # CSS Styling
         css_provider = Gtk.CssProvider()

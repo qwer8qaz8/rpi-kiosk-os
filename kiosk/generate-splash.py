@@ -166,11 +166,18 @@ def create_pi_bootsplash(output_path="splash.png"):
     tb_w = tb_bbox[2] - tb_bbox[0]
     draw.text((cx - tb_w // 2, by + 14), badge_text, font=f_badge, fill=(148, 163, 184, 255))
 
+    # Credits: 8Air • SuperG Technologies
+    credit_text = "8Air  •  SuperG Technologies"
+    c_bbox = draw.textbbox((0, 0), credit_text, font=f_sub)
+    cw = c_bbox[2] - c_bbox[0]
+    cy_text = by + 110
+    draw.text((cx - cw // 2, cy_text), credit_text, font=f_sub, fill=(148, 163, 184, 255))
+
     # Sleek bottom gradient accent line
     bar_w = 900
     bar_h = 10
     bar_x = cx - bar_w // 2
-    bar_y = by + 160
+    bar_y = cy_text + 70
     draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=5, fill=(14, 165, 233, 180))
 
     # Downsample from 3840x2160 to 1920x1080 with Lanczos for antialiased quality
