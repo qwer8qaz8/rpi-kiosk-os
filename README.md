@@ -1,12 +1,12 @@
 # 🖥️ rpi-kiosk-os
 
-> **Ultra-lightweight, headless-booted Home Assistant touchscreen kiosk for Raspberry Pi OS Lite (64-bit)**.  
-> Installs in minutes with zero desktop overhead using **Cage** (Wayland) and **Chromium**.
+> **Ultra-lightweight, FullPageOS-inspired single-purpose Home Assistant Kiosk Appliance for Raspberry Pi OS Lite (64-bit)**.  
+> Installs in minutes with zero desktop overhead using **labwc** (Wayland) and **Hardware-Optimized Chromium**.
 
 [![Platform](https://img.shields.io/badge/Platform-Raspberry%20Pi%20OS%20Lite%20(64--bit)-C51A4A?logo=raspberry-pi&logoColor=white)](#)
-[![Display](https://img.shields.io/badge/Compositor-Cage%20(Wayland)-4C1)](#)
+[![Display](https://img.shields.io/badge/Compositor-labwc%20(Wayland)-4C1)](#)
 [![Home Assistant](https://img.shields.io/badge/Integration-Home%20Assistant%20MQTT-41BDF5?logo=home-assistant&logoColor=white)](#)
-[![Web UI](https://img.shields.io/badge/WebUI-Port%208080-blue)](#)
+[![CLI](https://img.shields.io/badge/CLI-kioskos-blue)](#)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
@@ -77,17 +77,13 @@ curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.
 
 ## 🚀 Key Features
 
-* **⚡ Ultra-Minimal Footprint:** No desktop environments, window managers, or panels (`raspberrypi-ui-mods` is not installed). Boots directly into **Cage**, an ultra-lightweight Wayland kiosk compositor that displays a single full-screen window.
-* **🛡️ Secure Automatic Login:** Restricts auto-login strictly to the Pi's reserved IP address using Home Assistant's `trusted_networks` authentication provider—no hardcoded passwords needed.
-* **📱 Web Management Dashboard (Port 8080):** Mobile-friendly web interface accessible at `http://<PI_IP>:8080` to change the dashboard URL, adjust brightness (1–100%), toggle screen power, rotate the display (0°, 90°, 180°, 270°), and copy your custom `trusted_networks` YAML snippet without needing SSH.
-* **🏠 Native Home Assistant Integration via MQTT:** Automatically registers your Pi in Home Assistant via MQTT Discovery:
-  * `switch.kiosk_screen` – Turn screen backlight/power ON or OFF.
-  * `number.kiosk_brightness` – Adjust screen brightness (1–100%).
-  * `button.kiosk_reload` – Instantly reload Chromium / Lovelace view.
-  * `button.kiosk_reboot` – Reboot the Pi from Home Assistant.
-  * `sensor.kiosk_url` – Reports the active dashboard URL.
-  * `sensor.kiosk_temperature` & `sensor.kiosk_ip` – Hardware telemetry.
-* **🧩 Custom Home Assistant Lovelace Card (`kiosk-card.js`):** A custom frontend plugin card for your Home Assistant dashboard with screen toggle, brightness slider, reload, reboot, and remote URL switcher.
+* **⚡ Ultra-Minimal Footprint:** No desktop environments, window managers, or panels. Boots directly into **labwc** (Wayland) running hardware-accelerated Chromium in locked fullscreen app mode.
+* **🍓 Hardware-Aware Profiles & Pi-Themed Bootsplash:** Automatically analyzes physical hardware (Pi 5, 4, 3, Zero 2 W, or Generic) and applies optimal Chromium rasterization threads, JS heap bounds, and cache settings. Boots with an animated custom Raspberry Pi × Home Assistant themed vector splash screen.
+* **🛡️ Secure Automatic Login:** Restricts auto-login strictly to the Pi's reserved IP address using Home Assistant's `trusted_networks` authentication provider, or injects auto-login credentials deeply into shadow DOM login forms.
+* **🔒 Comprehensive Shortcut Lockdown:** All Chrome shortcuts, devtools (<kbd>F12</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd>), tabs (<kbd>Ctrl</kbd>+<kbd>T</kbd>/<kbd>W</kbd>), and task managers (<kbd>Shift</kbd>+<kbd>Esc</kbd>) are intercepted and voided.
+* **💾 Disaster Recovery & Backups:** Create sanitized and full `.tar.gz` backups with a single command: `kioskos backup create`.
+* **🔄 Seamless GitHub Updates (No Spontaneous Reboots):** Automated daily checks sync latest code and cleanly reload the display compositor without random system reboots.
+* **🏠 Native Home Assistant Integration via MQTT:** Automatically registers your Pi in Home Assistant via MQTT Discovery (screen power, brightness, telemetry, chimes).
 * **💾 SD Card Protection:** Chromium caching is directed to a RAM disk (`/tmp/chromium-cache`), preventing wear on your MicroSD card.
 * **🔄 Touchscreen & HDMI Support:** Works out-of-the-box with the Official Raspberry Pi Touchscreen (DSI), Waveshare DSI screens, and standard HDMI monitors.
 
@@ -97,29 +93,26 @@ curl -sSL https://raw.githubusercontent.com/qwer8qaz8/rpi-kiosk-os/main/install.
 
 ```
 rpi-kiosk-os/
-├── install.sh                  # Interactive & automated setup script
+├── install.sh                  # One-line interactive & automated setup script
 ├── uninstall.sh                # Clean uninstaller
 ├── README.md                   # Full step-by-step instructions
-├── kiosk-setup.json.example    # Unattended setup configuration template
-├── homeassistant/
-│   ├── README.md               # Home Assistant integration guide
-│   ├── kiosk-card.js           # Custom Lovelace Card plugin
-│   └── automations/
-│       ├── kiosk_motion_screen.yaml # Motion wake & inactivity sleep
-│       └── kiosk_night_sleep.yaml   # Scheduled bedtime sleep & wake
+├── AGENT_INSTRUCTIONS.md       # AI Agent & automated provisioning guide
+├── AGENTS.md                   # Multi-agent developer reference
+├── kiosk-config.sh             # Configuration utility
 ├── kiosk/
-│   ├── config.json             # Runtime configuration
-│   ├── launch-kiosk.sh         # Script invoked by Cage systemd service
+│   ├── kioskos                 # Master appliance CLI
+│   ├── hardware-profiles.py    # Hardware profiling & performance optimizer
+│   ├── kiosk-native-splash.py  # Hardware-aware GTK3 Wayland splash
+│   ├── backup-kiosk.sh         # Appliance backup & recovery tool
+│   ├── launch-kiosk.sh         # FullPageOS-style kiosk launcher & supervisor
 │   ├── screen-control.sh       # Hardware power & orientation helper
-│   ├── kiosk-mqtt.py           # MQTT discovery & command daemon
-│   └── webui/
-│       ├── app.py              # Flask settings server (Port 8080)
-│       └── templates/
-│           └── index.html      # Mobile-friendly web UI
+│   ├── kiosk-mqtt.py           # MQTT discovery & telemetry daemon
+│   └── labwc/                  # Labwc compositor & shortcut lockdown configs
 └── systemd/
-    ├── kiosk-display.service   # Systemd unit running Cage on TTY1
+    ├── kiosk-display.service   # Systemd unit running labwc on TTY1
     ├── kiosk-mqtt.service      # MQTT daemon service
-    └── kiosk-webui.service     # Web management UI service
+    ├── kiosk-autoupdate.timer  # Daily update timer (safe non-rebooting)
+    └── kiosk-autoupdate.service# Update runner
 ```
 
 ---

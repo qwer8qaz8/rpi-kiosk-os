@@ -5,6 +5,8 @@ __pycache__/
 
 # Environments
 .env
+agent-device.env
+*.local
 .venv
 env/
 venv/

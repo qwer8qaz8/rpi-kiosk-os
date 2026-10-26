@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# launch-kiosk.sh - Home Assistant Kiosk Appliance Launcher & Supervisor
-# Ultra-lightweight, hardware-accelerated, single-purpose Wayland kiosk.
+# launch-kiosk.sh - Single-Purpose Home Assistant Kiosk Appliance Launcher
+# FullPageOS-inspired architecture: hardware-accelerated, auto-login, zero desktop
 # ==============================================================================
 
 set +e
@@ -10,7 +10,7 @@ set -o pipefail
 # Ensure single supervisor instance runs at a time
 LOCKFILE="/tmp/launch-kiosk.lock"
 exec 200>"$LOCKFILE"
-flock -n 200 || { echo "[kiosk] Another launch-kiosk supervisor is already running, exiting cleanly."; exit 0; }
+flock -n 200 || { echo "[ha-kiosk] Another launch-kiosk supervisor is already running, exiting cleanly."; exit 0; }
 
 CONFIG_FILE="/etc/kiosk/config.json"
 FALLBACK_CONFIG="/opt/kiosk/config.json"
@@ -19,6 +19,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Resolve config file
 if [ ! -f "$CONFIG_FILE" ] && [ -f "$FALLBACK_CONFIG" ]; then
   CONFIG_FILE="$FALLBACK_CONFIG"
+fi
+
+# 1. Apply Hardware-Optimized Performance Profile (Chromium flags, cache sizing, memory limits)
+if [ -x "$SCRIPT_DIR/hardware-profiles.py" ]; then
+  echo "[ha-kiosk] Applying hardware performance profile..."
+  python3 "$SCRIPT_DIR/hardware-profiles.py" apply 2>/dev/null || true
 fi
 
 # Load settings from config.json
@@ -103,7 +109,7 @@ if [[ "$DASHBOARD_URL" =~ ([a-zA-Z0-9.-]+\.local) ]]; then
 fi
 
 # Allow Wayland compositor to settle
-sleep 0.5
+sleep 0.3
 
 # Apply screen rotation if configured
 if [ -n "$ROTATION" ] && [ "$ROTATION" != "normal" ]; then
@@ -158,7 +164,7 @@ cat << 'EOF_MANIFEST' > "$EXT_DIR/manifest.json"
 {
   "manifest_version": 3,
   "name": "HA Kiosk Lock",
-  "version": "2.0",
+  "version": "3.0",
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
@@ -172,7 +178,7 @@ EOF_MANIFEST
 
 cat << 'EOF_JS' > "$EXT_DIR/content.js"
 // ==============================================================================
-// HA Kiosk Appliance Guard - Single-Window & Keyboard Lockdown
+// HA Kiosk Appliance Guard - Single-Window, Deep Auto-Login, & Shortcut Lockdown
 // ==============================================================================
 
 // 1. Single Window Enforcement: Prevent popups or external windows
@@ -190,9 +196,10 @@ document.addEventListener('click', function(e) {
   }
 }, true);
 
-// 2. Strict Keyboard Shortcut Lockdown (Allow only F5 and Ctrl+R for refresh)
+// 2. Strict Keyboard Shortcut Lockdown
+// Completely block Chrome shortcuts, devtools, tab management, bookmarks, print, download
 window.addEventListener('keydown', function(e) {
-  const k = e.key.toLowerCase();
+  const k = e.key ? e.key.toLowerCase() : '';
   
   // Allow normal refresh: F5 or Ctrl+R
   if (e.key === 'F5' || (e.ctrlKey && k === 'r')) {
@@ -213,15 +220,22 @@ window.addEventListener('keydown', function(e) {
     return false;
   }
 
-  // Block Window & Tab management (Ctrl+T, Ctrl+N, Ctrl+W, Ctrl+O, Ctrl+S, Ctrl+P, Ctrl+H, Ctrl+J, Ctrl+U, Ctrl+D)
-  if (e.ctrlKey && ['t', 'n', 'w', 'o', 's', 'p', 'h', 'j', 'u', 'd', 'b'].includes(k)) {
+  // Block Window & Tab management (Ctrl+T, Ctrl+N, Ctrl+W, Ctrl+O, Ctrl+S, Ctrl+P, Ctrl+H, Ctrl+J, Ctrl+U, Ctrl+D, Ctrl+B)
+  if (e.ctrlKey && ['t', 'n', 'w', 'o', 's', 'p', 'h', 'j', 'u', 'd', 'b', 'q', 'f'].includes(k)) {
     e.preventDefault();
     e.stopPropagation();
     return false;
   }
 
-  // Block Back/Forward history navigation via Alt+Arrow
-  if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+  // Block Alt+F4 and Alt navigation
+  if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'F4')) {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  }
+
+  // Block F1 (Help) and F11 (Fullscreen)
+  if (e.key === 'F1' || e.key === 'F11') {
     e.preventDefault();
     e.stopPropagation();
     return false;
@@ -250,15 +264,15 @@ function findInShadow(root, selector) {
   return null;
 }
 
-// 4. Home Assistant Auto-Login (Shadow DOM Capable)
+// 4. Home Assistant Deep Auto-Login
 const HA_USER = '__AUTOLOGIN_USER__';
 const HA_PASS = '__AUTOLOGIN_PASS__';
 
 function attemptHaLogin() {
-  if (!HA_USER || !HA_PASS) return;
+  if (!HA_USER) return;
 
-  // 1) Check for User selection button (Trusted Networks auth flow)
-  const userItems = document.querySelectorAll ? document.querySelectorAll('mwc-list-item, [role="button"]') : [];
+  // Flow A: Trusted Networks Auth Provider (User selection list)
+  const userItems = document.querySelectorAll ? document.querySelectorAll('mwc-list-item, [role="button"], ha-user-badge') : [];
   for (const item of userItems) {
     if (item.textContent && item.textContent.trim().toLowerCase() === HA_USER.toLowerCase()) {
       item.click();
@@ -266,28 +280,49 @@ function attemptHaLogin() {
     }
   }
 
-  // 2) Check for Username and Password fields inside Shadow DOM
-  const userField = findInShadow(document, 'input[name="username"]') || findInShadow(document, 'input[autocomplete="username"]');
-  const passField = findInShadow(document, 'input[name="password"]') || findInShadow(document, 'input[type="password"]');
+  // Flow B: Standard Username and Password Form (handles deep shadow DOM in mwc-textfield / ha-textfield)
+  if (!HA_PASS) return;
 
-  if (userField && passField && !userField.value) {
-    userField.value = HA_USER;
-    userField.dispatchEvent(new Event('input', { bubbles: true }));
-    userField.dispatchEvent(new Event('change', { bubbles: true }));
+  const userField = findInShadow(document, 'input[name="username"]') ||
+                    findInShadow(document, 'input[autocomplete="username"]') ||
+                    findInShadow(document, 'mwc-textfield[name="username"]') ||
+                    findInShadow(document, 'ha-textfield[name="username"]');
 
-    passField.value = HA_PASS;
-    passField.dispatchEvent(new Event('input', { bubbles: true }));
-    passField.dispatchEvent(new Event('change', { bubbles: true }));
+  const passField = findInShadow(document, 'input[name="password"]') ||
+                    findInShadow(document, 'input[type="password"]') ||
+                    findInShadow(document, 'mwc-textfield[name="password"]') ||
+                    findInShadow(document, 'ha-textfield[name="password"]');
 
-    const stayCheck = findInShadow(document, 'input[type="checkbox"]');
-    if (stayCheck && !stayCheck.checked) stayCheck.click();
+  if (userField && passField) {
+    const actualUser = userField.shadowRoot ? userField.shadowRoot.querySelector('input') || userField : userField;
+    const actualPass = passField.shadowRoot ? passField.shadowRoot.querySelector('input') || passField : passField;
 
-    setTimeout(() => {
-      const submitBtn = findInShadow(document, 'button[type="submit"]') ||
-                        findInShadow(document, 'mwc-button') ||
-                        findInShadow(document, 'ha-progress-button');
-      if (submitBtn) submitBtn.click();
-    }, 250);
+    if (actualUser && actualPass && (!actualUser.value || actualUser.value !== HA_USER)) {
+      actualUser.value = HA_USER;
+      actualUser.dispatchEvent(new Event('input', { bubbles: true }));
+      actualUser.dispatchEvent(new Event('change', { bubbles: true }));
+
+      actualPass.value = HA_PASS;
+      actualPass.dispatchEvent(new Event('input', { bubbles: true }));
+      actualPass.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Check "Stay logged in"
+      const stayCheck = findInShadow(document, 'ha-checkbox') || findInShadow(document, 'input[type="checkbox"]');
+      if (stayCheck) {
+        const actualCheck = stayCheck.shadowRoot ? stayCheck.shadowRoot.querySelector('input') || stayCheck : stayCheck;
+        if (!actualCheck.checked) actualCheck.click();
+      }
+
+      setTimeout(() => {
+        const submitBtn = findInShadow(document, 'button[type="submit"]') ||
+                          findInShadow(document, 'mwc-button') ||
+                          findInShadow(document, 'ha-progress-button');
+        if (submitBtn) {
+          const actualBtn = submitBtn.shadowRoot ? submitBtn.shadowRoot.querySelector('button') || submitBtn : submitBtn;
+          actualBtn.click();
+        }
+      }, 300);
+    }
   }
 }
 
@@ -363,19 +398,19 @@ function hideSandwich() {
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(attemptHaLogin, 500);
+    setTimeout(attemptHaLogin, 400);
     hideSandwich();
   });
 } else {
-  setTimeout(attemptHaLogin, 500);
+  setTimeout(attemptHaLogin, 400);
   hideSandwich();
 }
 window.addEventListener('load', () => {
   hideSandwich();
-  setTimeout(attemptHaLogin, 1000);
+  setTimeout(attemptHaLogin, 800);
 });
 setInterval(hideSandwich, 1500);
-setInterval(attemptHaLogin, 3000);
+setInterval(attemptHaLogin, 2500);
 EOF_JS
 
 if [ -n "$AUTOLOGIN_USER" ]; then
@@ -392,26 +427,48 @@ fi
 
 sed -i "s|__DASHBOARD_URL__|$DASHBOARD_URL|g" "$EXT_DIR/content.js"
 
-# Launch Hardware-Accelerated Native GTK3 Splash Screen on Wayland (only on initial boot)
-if [ -f "/opt/kiosk/kiosk-native-splash.py" ] && [ ! -f "/tmp/kiosk-boot-splash-done" ]; then
+# Launch Hardware-Aware Native GTK3 Splash Screen on Wayland (only on initial boot)
+if [ -f "$SCRIPT_DIR/kiosk-native-splash.py" ] && [ ! -f "/tmp/kiosk-boot-splash-done" ]; then
     touch "/tmp/kiosk-boot-splash-done"
-    echo "[ha-kiosk] Displaying Native GTK3 Splash Screen..."
-    python3 /opt/kiosk/kiosk-native-splash.py "$DASHBOARD_URL" || true
+    echo "[ha-kiosk] Displaying Hardware-Aware Native Splash Screen..."
+    python3 "$SCRIPT_DIR/kiosk-native-splash.py" "$DASHBOARD_URL" || true
 fi
 
 # Clean up any duplicate chromium instances before supervisor begins
 killall -9 chromium chromium-browser 2>/dev/null || true
-sleep 0.5
+sleep 0.3
+
+# Read Hardware-Optimized Chromium Flags
+HW_FLAGS=()
+FLAGS_FILE="/etc/kiosk/chromium-flags.conf"
+[ ! -f "$FLAGS_FILE" ] && FLAGS_FILE="/opt/kiosk/chromium-flags.conf"
+if [ -f "$FLAGS_FILE" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        HW_FLAGS+=("$line")
+    done < "$FLAGS_FILE"
+fi
+
+# Fallback flags if file was empty
+if [ ${#HW_FLAGS[@]} -eq 0 ]; then
+    HW_FLAGS=(
+        "--enable-gpu-rasterization"
+        "--enable-zero-copy"
+        "--disk-cache-dir=/tmp/chromium-cache"
+    )
+fi
 
 # Persistent supervisor loop: keeps single-purpose fullscreen Chromium alive permanently
 while true; do
     # Check if target HA is reachable, otherwise use branded offline screen with auto-retry
     TARGET_LAUNCH_URL="$DASHBOARD_URL"
     if ! curl -s -m 2 -o /dev/null -w "%{http_code}" "$DASHBOARD_URL" 2>/dev/null | grep -q '^[23]'; then
-        TARGET_LAUNCH_URL="file:///opt/kiosk/offline.html?url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$DASHBOARD_URL'''))" 2>/dev/null || echo "$DASHBOARD_URL")"
+        encoded_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$DASHBOARD_URL'''))" 2>/dev/null || echo "$DASHBOARD_URL")
+        TARGET_LAUNCH_URL="file:///opt/kiosk/offline.html?url=$encoded_url"
     fi
 
-    echo "[ha-kiosk] Launching Fullscreen Single-Purpose Chromium ($TARGET_LAUNCH_URL)..."
+    echo "[ha-kiosk] Launching Fullscreen Home Assistant ($TARGET_LAUNCH_URL)..."
     "$CHROMIUM_BIN" \
       --ozone-platform=wayland \
       --remote-debugging-port=9222 \
@@ -425,9 +482,6 @@ while true; do
       --disable-infobars \
       --no-first-run \
       --password-store=basic \
-      --disk-cache-dir=/tmp/chromium-cache \
-      --enable-gpu-rasterization \
-      --enable-zero-copy \
       --check-for-update-interval=31536000 \
       --disable-pinch \
       --overscroll-history-navigation=0 \
@@ -438,7 +492,8 @@ while true; do
       --disable-domain-reliability \
       --no-default-browser-check \
       --autoplay-policy=no-user-gesture-required \
-      --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' &
+      --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
+      "${HW_FLAGS[@]}" &
     
     CHROME_PID=$!
 

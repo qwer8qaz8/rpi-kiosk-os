@@ -17,7 +17,8 @@
   "display_input_mode": "mouse",
   "lockdown": true,
   "allowed_urls": [],
-  "webui_pin": "",
+  "ha_username": "kiosk",
+  "ha_password": "",
   "mqtt": {
     "enabled": false,
     "broker": "",

@@ -6,19 +6,72 @@
   </core>
 
   <windowRules>
-    <!-- Home Assistant Kiosk Mode: No borders, no titlebars, cover full display -->
+    <!-- Single-Purpose Home Assistant Kiosk Lockdown: Strictly fullscreen, no borders, no server decorations -->
     <windowRule identifier="*" serverDecoration="no">
       <action name="Maximize" />
     </windowRule>
   </windowRules>
 
   <keyboard>
-    <!-- Block Shift + Escape (Chrome Task Manager) -->
-    <keybind key="S-Escape">
-      <action name="None" />
-    </keybind>
+    <!-- =================================================================== -->
+    <!-- CHROMIUM & DESKTOP KEYBOARD SHORTCUT LOCKDOWN                       -->
+    <!-- All browser shortcuts, window manipulators, and consoles intercepted -->
+    <!-- =================================================================== -->
 
-    <!-- Block Virtual Terminal / Console Switching (Ctrl+Alt+F1 through F12) -->
+    <!-- Tabs & Window Management -->
+    <keybind key="C-t"><action name="None" /></keybind>
+    <keybind key="C-T"><action name="None" /></keybind>
+    <keybind key="C-S-t"><action name="None" /></keybind>
+    <keybind key="C-S-T"><action name="None" /></keybind>
+    <keybind key="C-n"><action name="None" /></keybind>
+    <keybind key="C-N"><action name="None" /></keybind>
+    <keybind key="C-S-n"><action name="None" /></keybind>
+    <keybind key="C-S-N"><action name="None" /></keybind>
+    <keybind key="C-w"><action name="None" /></keybind>
+    <keybind key="C-W"><action name="None" /></keybind>
+    <keybind key="C-S-w"><action name="None" /></keybind>
+    <keybind key="C-q"><action name="None" /></keybind>
+    <keybind key="C-Q"><action name="None" /></keybind>
+    <keybind key="A-F4"><action name="None" /></keybind>
+
+    <!-- Developer Tools & Inspect -->
+    <keybind key="F12"><action name="None" /></keybind>
+    <keybind key="C-S-i"><action name="None" /></keybind>
+    <keybind key="C-S-I"><action name="None" /></keybind>
+    <keybind key="C-S-j"><action name="None" /></keybind>
+    <keybind key="C-S-J"><action name="None" /></keybind>
+    <keybind key="C-S-c"><action name="None" /></keybind>
+    <keybind key="C-S-C"><action name="None" /></keybind>
+    <keybind key="C-u"><action name="None" /></keybind>
+    <keybind key="C-U"><action name="None" /></keybind>
+
+    <!-- Chrome Internal Tools & Task Manager -->
+    <keybind key="S-Escape"><action name="None" /></keybind>
+    <keybind key="C-h"><action name="None" /></keybind>
+    <keybind key="C-H"><action name="None" /></keybind>
+    <keybind key="C-j"><action name="None" /></keybind>
+    <keybind key="C-J"><action name="None" /></keybind>
+    <keybind key="C-S-Delete"><action name="None" /></keybind>
+    <keybind key="F1"><action name="None" /></keybind>
+
+    <!-- Printing, Saving, Bookmarks, and File Dialogs -->
+    <keybind key="C-p"><action name="None" /></keybind>
+    <keybind key="C-P"><action name="None" /></keybind>
+    <keybind key="C-s"><action name="None" /></keybind>
+    <keybind key="C-S"><action name="None" /></keybind>
+    <keybind key="C-o"><action name="None" /></keybind>
+    <keybind key="C-O"><action name="None" /></keybind>
+    <keybind key="C-d"><action name="None" /></keybind>
+    <keybind key="C-D"><action name="None" /></keybind>
+    <keybind key="C-b"><action name="None" /></keybind>
+    <keybind key="C-B"><action name="None" /></keybind>
+
+    <!-- History Navigation & Fullscreen Toggles -->
+    <keybind key="F11"><action name="None" /></keybind>
+    <keybind key="A-Left"><action name="None" /></keybind>
+    <keybind key="A-Right"><action name="None" /></keybind>
+
+    <!-- Virtual Terminal / Console Switching (Ctrl+Alt+F1 through F12) -->
     <keybind key="C-A-F1"><action name="None" /></keybind>
     <keybind key="C-A-F2"><action name="None" /></keybind>
     <keybind key="C-A-F3"><action name="None" /></keybind>
@@ -32,13 +85,13 @@
     <keybind key="C-A-F11"><action name="None" /></keybind>
     <keybind key="C-A-F12"><action name="None" /></keybind>
 
-    <!-- Restart Kiosk Keybind: Ctrl+Alt+R -->
+    <!-- Allowed System Keybinds (Administrator Physical Shortcuts) -->
+    <!-- Restart Kiosk Compositor: Ctrl+Alt+R -->
     <keybind key="C-A-r">
       <action name="Execute" command="/usr/bin/sudo /bin/systemctl restart kiosk-display" />
     </keybind>
-    <!-- Reboot Keybind: Ctrl+Alt+Delete -->
-    <keybind key="C-A-Delete">
-      <action name="Execute" command="/usr/bin/sudo /bin/systemctl reboot" />
+    <keybind key="C-A-R">
+      <action name="Execute" command="/usr/bin/sudo /bin/systemctl restart kiosk-display" />
     </keybind>
   </keyboard>
 

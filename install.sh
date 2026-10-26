@@ -113,8 +113,8 @@ fi
 clear 2>/dev/null || true
 echo -e "${CYAN}${BOLD}"
 echo "=================================================================="
-echo "          Raspberry Pi OS Lite Ultra-Lightweight Kiosk            "
-echo "        Cage (Wayland) + Chromium + Flask WebUI + HA MQTT         "
+echo "          Raspberry Pi Home Assistant Kiosk Appliance             "
+echo "            labwc (Wayland) + Hardware-Optimized Chromium         "
 echo "=================================================================="
 echo -e "${NC}"
 
@@ -229,7 +229,7 @@ else
   MQTT_ENABLED="false"
 fi
 
-echo -e "\n${GREEN}[1/6] Installing dependencies (Cage, Chromium, Flask, MQTT)...${NC}"
+echo -e "\n${GREEN}[1/6] Installing dependencies (labwc, Chromium, GTK3, MQTT)...${NC}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 
@@ -257,7 +257,6 @@ apt-get install -y --no-install-recommends \
   libnss-mdns \
   avahi-utils \
   python3-paho-mqtt \
-  python3-flask \
   python3-opencv \
   python3-evdev \
   python3-numpy \
@@ -303,8 +302,8 @@ EOF
 chmod 0440 /etc/sudoers.d/kiosk
 
 # Install Kiosk files to /opt/kiosk
-echo -e "${GREEN}[4/6] Installing kiosk scripts and Web UI to /opt/kiosk...${NC}"
-mkdir -p /opt/kiosk /opt/kiosk/webui/templates /etc/kiosk
+echo -e "${GREEN}[4/6] Installing kiosk scripts and configurations to /opt/kiosk...${NC}"
+mkdir -p /opt/kiosk /etc/kiosk
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/kiosk/launch-kiosk.sh" ]; then
@@ -321,13 +320,10 @@ fi
 chmod +x /opt/kiosk/launch-kiosk.sh
 chmod +x /opt/kiosk/screen-control.sh
 chmod +x /opt/kiosk/kiosk-mqtt.py
-chmod +x /opt/kiosk/start-desktop.sh 2>/dev/null || true
-chmod +x /opt/kiosk/lock-kiosk.sh 2>/dev/null || true
-chmod +x /opt/kiosk/toggle-admin.sh 2>/dev/null || true
-chmod +x /opt/kiosk/prompt-exit.sh 2>/dev/null || true
 chmod +x /opt/kiosk/apply-update.sh 2>/dev/null || true
 chmod +x /opt/kiosk/backup-kiosk.sh 2>/dev/null || true
 chmod +x /opt/kiosk/kioskos 2>/dev/null || true
+chmod +x /opt/kiosk/hardware-profiles.py 2>/dev/null || true
 chmod +x /opt/kiosk/kiosk-native-splash.py 2>/dev/null || true
 chmod +x /opt/kiosk/kiosk-native-update.py 2>/dev/null || true
 chmod +x /opt/kiosk/kiosk-native-admin.py 2>/dev/null || true
@@ -337,7 +333,6 @@ chmod +x /opt/kiosk/kiosk-native-auth.py 2>/dev/null || true
 mkdir -p /etc/kiosk/labwc /etc/kiosk/waybar
 cp -r /opt/kiosk/labwc/* /etc/kiosk/labwc/ 2>/dev/null || true
 cp -r /opt/kiosk/waybar/* /etc/kiosk/waybar/ 2>/dev/null || true
-chmod +x /opt/kiosk/webui/app.py
 chmod +x /opt/kiosk/kiosk-config.sh 2>/dev/null || true
 ln -sf /opt/kiosk/kioskos /usr/local/bin/kioskos 2>/dev/null || true
 ln -sf /opt/kiosk/kioskos /usr/bin/kioskos 2>/dev/null || true
@@ -354,7 +349,7 @@ cat << "EOF_MOTD" > /etc/motd
  ██╔═██╗ ██║██║   ██║╚════██║██╔═██╗ ██║   ██║╚════██║
  ██║  ██╗██║╚██████╔╝███████║██║  ██╗╚██████╔╝███████║
  ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
-                KioskOS Appliance Edition
+        Home Assistant Kiosk Appliance Edition
 EOF_MOTD
 cp /etc/motd /etc/issue 2>/dev/null || true
 
@@ -369,7 +364,6 @@ cat << EOF > /etc/kiosk/config.json
   "startup_chime": true,
   "lockdown": true,
   "allowed_urls": [],
-  "webui_pin": "",
   "mqtt": {
     "enabled": $MQTT_ENABLED,
     "broker": "$MQTT_BROKER",
@@ -382,6 +376,10 @@ cat << EOF > /etc/kiosk/config.json
   }
 }
 EOF
+
+# Detect hardware and apply optimization profile
+echo -e "${GREEN}[*] Analyzing hardware and applying performance profile...${NC}"
+python3 /opt/kiosk/hardware-profiles.py apply 2>/dev/null || true
 
 chown -R "$TARGET_USER:$TARGET_USER" /opt/kiosk
 chown -R "$TARGET_USER:$TARGET_USER" /etc/kiosk
@@ -500,23 +498,24 @@ systemctl enable disable-vt-switching.service 2>/dev/null || true
 
 # Customize Systemd units for the detected user and UID
 echo -e "${GREEN}[5/6] Registering Systemd Services...${NC}"
-for svc in kiosk-display.service kiosk-mqtt.service kiosk-webui.service; do
-  sed -i "s/User=pi/User=$TARGET_USER/g" "/etc/systemd/system/$svc"
-  sed -i "s/Group=pi/Group=$TARGET_USER/g" "/etc/systemd/system/$svc"
-  sed -i "s|XDG_RUNTIME_DIR=/run/user/1000|XDG_RUNTIME_DIR=/run/user/$TARGET_UID|g" "/etc/systemd/system/$svc"
+for svc in kiosk-display.service kiosk-mqtt.service; do
+  if [ -f "/etc/systemd/system/$svc" ]; then
+    sed -i "s/User=pi/User=$TARGET_USER/g" "/etc/systemd/system/$svc"
+    sed -i "s/Group=pi/Group=$TARGET_USER/g" "/etc/systemd/system/$svc"
+    sed -i "s|XDG_RUNTIME_DIR=/run/user/1000|XDG_RUNTIME_DIR=/run/user/$TARGET_UID|g" "/etc/systemd/system/$svc"
+  fi
 done
 
 systemctl set-default graphical.target
 systemctl daemon-reload
 systemctl enable kiosk-display.service
 systemctl enable kiosk-mqtt.service
-systemctl enable kiosk-webui.service
-# Auto-update timer is disabled by default to prevent unexpected reboots
-# systemctl enable kiosk-autoupdate.timer
+# Daily GitHub update check (reloads display without spontaneous reboots)
+systemctl enable kiosk-autoupdate.timer 2>/dev/null || true
+systemctl start kiosk-autoupdate.timer 2>/dev/null || true
 
-systemctl restart kiosk-webui.service
-systemctl restart kiosk-mqtt.service
-systemctl restart kiosk-display.service || true
+systemctl restart kiosk-mqtt.service 2>/dev/null || true
+systemctl restart kiosk-display.service 2>/dev/null || true
 
 # Generate Home Assistant trusted_networks snippet
 SNIPPET_FILE="/etc/kiosk/ha-trusted-networks.yaml"
@@ -546,20 +545,25 @@ cat "$SNIPPET_FILE"
 echo -e "${NC}"
 echo -e "   (A copy is saved at: ${BOLD}$SNIPPET_FILE${NC})"
 
-echo -e "\n${BOLD}2. Web Management Dashboard:${NC}"
-echo -e "   Open from any browser or phone: ${GREEN}http://${DETECTED_IP}:8080${NC}"
-echo -e "   You can change the URL, rotate the display, or toggle screen power."
+echo -e "\n${BOLD}2. Management CLI:${NC}"
+echo -e "   Use ${GREEN}kioskos${NC} from anywhere to manage the appliance:"
+echo -e "   • ${BOLD}kioskos status${NC}           Live telemetry, screen state & active profile"
+echo -e "   • ${BOLD}kioskos hw${NC}               Hardware diagnostics & display specs"
+echo -e "   • ${BOLD}kioskos profile${NC}          Manage hardware performance profiles"
+echo -e "   • ${BOLD}kioskos url <URL>${NC}        Change Home Assistant target dashboard"
+echo -e "   • ${BOLD}kioskos autologin <u > <p>${NC} Store auto-login credentials"
+echo -e "   • ${BOLD}kioskos backup create${NC}    Generate sanitized appliance backup"
+echo -e "   • ${BOLD}kioskos update${NC}           Pull GitHub updates (reloads without reboot)"
 
 echo -e "\n${BOLD}3. Status & Services:${NC}"
-echo -e "   • Display Kiosk:  ${GREEN}active${NC} (via Cage Wayland compositor on TTY1)"
-echo -e "   • Web Management: ${GREEN}http://${DETECTED_IP}:8080${NC}"
+echo -e "   • Display Kiosk:  ${GREEN}active${NC} (via labwc Wayland compositor on TTY1)"
 if [ "$MQTT_ENABLED" = "true" ]; then
   echo -e "   • MQTT Daemon:    ${GREEN}active${NC} (Reporting to $MQTT_BROKER)"
 else
-  echo -e "   • MQTT Daemon:    ${YELLOW}disabled${NC} (Enable via Web UI anytime)"
+  echo -e "   • MQTT Daemon:    ${YELLOW}disabled${NC} (Enable via 'kioskos set mqtt_broker <ip>')"
 fi
 
 echo -e "\n${CYAN}==================================================================${NC}"
-echo -e "${BOLD}Tip:${NC} If you don't see the display immediately, reboot once:"
-echo -e "     ${BOLD}sudo reboot${NC}"
+echo -e "${BOLD}Tip:${NC} If you don't see the display immediately, run:"
+echo -e "     ${BOLD}sudo systemctl restart kiosk-display${NC}"
 echo -e "${CYAN}==================================================================${NC}\n"

@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Raspberry Pi Kiosk Auto-Update Daily (Disabled by default)
+Description=Check and Apply KioskOS GitHub Updates Daily (Reloads display without reboot)
 After=network-online.target
 
 [Timer]
